@@ -1,71 +1,119 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-  <meta charset="UTF-8" />
-  <title>70/30 Watch & Earn</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>70/30 Earnings App</title>
   <style>
     body {
-      background: #121212;
-      color: #fff;
       font-family: Arial, sans-serif;
-      text-align: center;
       padding: 20px;
+      background-color: #111;
+      color: #eee;
     }
-    h1 {
-      color: #00ffcc;
+    h2 {
+      color: #00d1ff;
     }
-    #balance {
-      font-size: 24px;
-      margin: 20px 0;
-    }
-    button {
-      padding: 12px 24px;
-      margin: 10px;
-      font-size: 18px;
-      background: #00ffcc;
-      border: none;
-      border-radius: 8px;
-      cursor: pointer;
+    input, button {
+      padding: 10px;
+      font-size: 16px;
     }
     iframe {
       width: 100%;
-      height: 600px;
+      height: 500px;
       border: none;
-      border-radius: 10px;
+      margin-bottom: 20px;
+    }
+    #auth, #main {
       margin-top: 20px;
+    }
+    .hidden {
+      display: none;
     }
   </style>
 </head>
 <body>
 
-  <h1>Welcome to 70/30 Watch & Earn</h1>
+  <h1>💰 Welcome to 70/30 Earnings</h1>
 
-  <div id="balance">Balance: $0.00</div>
-  <button onclick="refreshBalance()">🔄 Refresh Balance</button>
+  <div id="auth">
+    <input type="email" id="email" placeholder="Enter your email">
+    <button onclick="login()">Login</button>
+  </div>
 
-  <h2>📋 CPX Research Offerwall</h2>
-  <iframe src="https://offers.cpx-research.com/index.php?app_id=28541&ext_user_id=syfrettjoe@gmail.com&secure_hash=qTNDcrRbH2XGbK4oT1QvWODM21PiXGMf"></iframe>
+  <div id="main" class="hidden">
+    <p id="welcome"></p>
+    <p><strong>Balance:</strong> $<span id="balance">0.00</span></p>
+    <button onclick="logout()">Log Out</button>
+    <br><br>
+    <button onclick="watchAd()">📺 Watch Ad (+$0.007)</button>
 
-  <h2>🎁 AdGem Offerwall</h2>
-  <iframe src="https://api.adgem.com/v1/wall?appid=30896&playerid=syfrettjoe@gmail.com&subid=syfrettjoe@gmail.com&gid=1"></iframe>
+    <h2>📋 CPX Research Offerwall</h2>
+    <iframe id="cpx-frame"></iframe>
+
+    <h2>🎁 AdGem Offerwall</h2>
+    <iframe id="adgem-frame"></iframe>
+  </div>
 
   <script>
-    const userEmail = "syfrettjoe@gmail.com";
+    const emailInput = document.getElementById("email");
+    const authDiv = document.getElementById("auth");
+    const mainDiv = document.getElementById("main");
+    const welcome = document.getElementById("welcome");
+    const balanceSpan = document.getElementById("balance");
+    const cpxFrame = document.getElementById("cpx-frame");
+    const adgemFrame = document.getElementById("adgem-frame");
 
-    async function refreshBalance() {
+    const backendURL = "https://seven030app-backend.onrender.com";
+
+    function login() {
+      const email = emailInput.value.trim().toLowerCase();
+      if (!email) return alert("Please enter a valid email.");
+      localStorage.setItem("user", email);
+      loadUser(email);
+    }
+
+    function logout() {
+      localStorage.removeItem("user");
+      location.reload();
+    }
+
+    function loadUser(email) {
+      authDiv.classList.add("hidden");
+      mainDiv.classList.remove("hidden");
+      welcome.textContent = `Welcome, ${email}`;
+      cpxFrame.src = `https://offers.cpx-research.com/index.php?app_id=28541&ext_user_id=${email}&secure_hash=qTNDcrRbH2XGbK4oT1QvWODM21PiXGMf`;
+      adgemFrame.src = `https://api.adgem.com/v1/wall?appid=30896&playerid=testuser@example.com&subid=${email}&gid=1`;
+      refreshBalance(email);
+    }
+
+    async function refreshBalance(email) {
       try {
-        const res = await fetch(`https://seven030app-backend.onrender.com/balance?user=${userEmail}`);
+        const res = await fetch(`${backendURL}/balance?user=${email}`);
         const data = await res.json();
-        const bal = parseFloat(data.balance).toFixed(2);
-        document.getElementById("balance").innerText = `Balance: $${bal}`;
+        balanceSpan.textContent = (data.balance || 0).toFixed(4);
       } catch (err) {
-        document.getElementById("balance").innerText = "Balance: Error";
+        console.error("Balance error:", err);
+        balanceSpan.textContent = "0.00";
       }
     }
 
-    window.onload = refreshBalance;
-  </script>
+    async function watchAd() {
+      const email = localStorage.getItem("user");
+      if (!email) return alert("Not logged in");
+      try {
+        const res = await fetch(`${backendURL}/watch_ad?user=${email}`);
+        await refreshBalance(email);
+        alert("✅ Ad watched! You earned $0.007");
+      } catch (err) {
+        alert("Failed to reward ad");
+      }
+    }
 
+    // Auto-login
+    const savedEmail = localStorage.getItem("user");
+    if (savedEmail) {
+      emailInput.value = savedEmail;
+      loadUser(savedEmail);
+    }
+  </script>
 </body>
 </html>
