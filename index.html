@@ -1,70 +1,70 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
+  <meta charset="UTF-8" />
   <title>70/30 Earnings</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <style>
     body {
-      background-color: #111;
-      color: #fff;
       font-family: Arial, sans-serif;
-      text-align: center;
-      padding-top: 80px;
+      padding: 20px;
+      background: #f9f9f9;
     }
-
-    input, button {
-      margin: 10px;
-      padding: 10px;
-      font-size: 18px;
-      border-radius: 8px;
-      border: none;
+    #dashboard {
+      display: none;
     }
-
-    input {
-      width: 250px;
-    }
-
-    button {
-      background-color: #28a745;
-      color: white;
-      cursor: pointer;
-    }
-
-    button:hover {
-      background-color: #218838;
-    }
-
-    #message {
-      margin-top: 15px;
-      font-size: 16px;
-      color: #ffcc00;
-    }
-
-    #logout-container {
-      position: absolute;
-      top: 10px;
-      right: 10px;
+    .hidden {
+      display: none;
     }
   </style>
 </head>
 <body>
   <h1>🔐 70/30 Earnings</h1>
-  <input type="email" id="email" placeholder="Email" required><br>
-  <input type="password" id="password" placeholder="Password" required><br>
-  <button onclick="login()">Login</button>
-  <button onclick="createAccount()">Create Account</button><br>
-  <button onclick="forgotPassword()">Forgot Password</button>
-  <div id="message"></div>
 
-  <div id="logout-container">
+  <!-- LOGIN / SIGNUP -->
+  <div id="auth">
+    <input type="email" id="email" placeholder="Email" required><br>
+    <input type="password" id="password" placeholder="Password" required><br>
+    <button onclick="login()">Login</button>
+    <button onclick="createAccount()">Create Account</button><br>
+    <button onclick="forgotPassword()">Forgot Password</button>
+  </div>
+
+  <!-- DASHBOARD -->
+  <div id="dashboard">
+    <p>Welcome, <span id="userEmailDisplay"></span></p>
+    <p>💰 Balance: $<span id="balanceDisplay">0.00</span></p>
+
+    <button onclick="watchAd()">▶️ Watch Ad (30/day)</button><br><br>
+
+    <h2>📋 CPX Research Offerwall</h2>
+    <iframe id="cpxFrame" width="100%" height="300"></iframe>
+
+    <h2>🎁 AdGem Offerwall</h2>
+    <iframe id="adgemFrame" width="100%" height="300"></iframe><br><br>
+
     <button onclick="logout()">Logout</button>
   </div>
 
+  <div id="message"></div>
+
   <script>
-    async function login() {
-      const email = document.getElementById("email").value;
-      const password = document.getElementById("password").value;
+    let currentUser = null;
+
+    // Try to load user from local storage
+    window.onload = () => {
+      const savedEmail = localStorage.getItem("userEmail");
+      const savedPassword = localStorage.getItem("userPassword");
+      if (savedEmail && savedPassword) {
+        document.getElementById("email").value = savedEmail;
+        document.getElementById("password").value = savedPassword;
+        login(savedEmail, savedPassword);
+      }
+    };
+
+    async function login(email, password) {
+      email = email || document.getElementById("email").value;
+      password = password || document.getElementById("password").value;
 
       const res = await fetch("https://seven030app-backend.onrender.com/login", {
         method: "POST",
@@ -73,12 +73,13 @@
       });
 
       const data = await res.json();
+      document.getElementById("message").innerText = data.message;
+
       if (data.success) {
         localStorage.setItem("userEmail", email);
-        document.getElementById("message").innerText = "✅ Login successful!";
-        location.href = "main.html";
-      } else {
-        document.getElementById("message").innerText = "❌ Login failed.";
+        localStorage.setItem("userPassword", password);
+        currentUser = email;
+        showDashboard();
       }
     }
 
@@ -86,48 +87,62 @@
       const email = document.getElementById("email").value;
       const password = document.getElementById("password").value;
 
-      const res = await fetch("https://seven030app-backend.onrender.com/create", {
+      const res = await fetch("https://seven030app-backend.onrender.com/create-account", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, password })
       });
 
       const data = await res.json();
-      if (data.success) {
-        localStorage.setItem("userEmail", email);
-        document.getElementById("message").innerText = "✅ Account created!";
-        location.href = "main.html";
-      } else {
-        document.getElementById("message").innerText = "❌ Account creation failed.";
-      }
+      document.getElementById("message").innerText = data.message;
     }
 
     async function forgotPassword() {
       const email = document.getElementById("email").value;
-
-      const res = await fetch("https://seven030app-backend.onrender.com/forgot", {
+      const res = await fetch("https://seven030app-backend.onrender.com/forgot-password", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email })
       });
 
       const data = await res.json();
-      if (data.success) {
-        document.getElementById("message").innerText = "📩 Reset link sent!";
-      } else {
-        document.getElementById("message").innerText = "❌ Failed to send reset link.";
-      }
+      document.getElementById("message").innerText = data.message;
     }
 
     function logout() {
       localStorage.removeItem("userEmail");
-      document.getElementById("message").innerText = "👋 Logged out.";
+      localStorage.removeItem("userPassword");
+      currentUser = null;
+      document.getElementById("auth").style.display = "block";
+      document.getElementById("dashboard").style.display = "none";
+      document.getElementById("message").innerText = "Logged out.";
     }
 
-    // Auto-redirect if already logged in
-    const userEmail = localStorage.getItem("userEmail");
-    if (userEmail) {
-      location.href = "main.html";
+    async function showDashboard() {
+      document.getElementById("auth").style.display = "none";
+      document.getElementById("dashboard").style.display = "block";
+      document.getElementById("userEmailDisplay").innerText = currentUser;
+
+      document.getElementById("cpxFrame").src =
+        `https://offers.cpx-research.com/index.php?app_id=28541&ext_user_id=${currentUser}&secure_hash=qTNDcrRbH2XGbK4oT1QvWODM21PiXGMf`;
+
+      document.getElementById("adgemFrame").src =
+        `https://api.adgem.com/v1/wall?appid=30896&playerid=${currentUser}&subid=${currentUser}&gid=1`;
+
+      refreshBalance();
+    }
+
+    async function refreshBalance() {
+      const res = await fetch(`https://seven030app-backend.onrender.com/balance?user=${currentUser}`);
+      const data = await res.json();
+      document.getElementById("balanceDisplay").innerText = parseFloat(data.balance).toFixed(2);
+    }
+
+    async function watchAd() {
+      const res = await fetch(`https://seven030app-backend.onrender.com/watch-ad?user=${currentUser}`);
+      const data = await res.json();
+      document.getElementById("message").innerText = data.message;
+      refreshBalance();
     }
   </script>
 </body>
