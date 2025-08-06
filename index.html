@@ -30,7 +30,7 @@
       flex-direction: column;
       gap: 10px;
       width: 100%;
-      max-width: 350px;
+      max-width: 400px;
     }
 
     input, button {
@@ -63,6 +63,24 @@
       font-size: 16px;
       margin-top: 10px;
     }
+
+    .log {
+      font-size: 14px;
+      background: #333;
+      margin-top: 10px;
+      padding: 10px;
+      border-radius: 5px;
+      max-height: 200px;
+      overflow-y: auto;
+    }
+
+    .log-entry {
+      margin-bottom: 6px;
+    }
+
+    .requested {
+      color: yellow;
+    }
   </style>
 </head>
 <body>
@@ -92,6 +110,9 @@
       💰 Balance: $<span id="balance">0.00</span><br>
       🔁 Views left today: <span id="viewsLeft">30</span>/30
     </div>
+    <button id="withdraw-btn" onclick="requestWithdraw()">💸 Request Withdraw</button>
+
+    <div class="log" id="earnings-log"></div>
     <button onclick="logout()">Logout</button>
   </div>
 
@@ -99,6 +120,8 @@
     let users = JSON.parse(localStorage.getItem("users") || "{}");
     let balances = JSON.parse(localStorage.getItem("balances") || "{}");
     let views = JSON.parse(localStorage.getItem("views") || "{}");
+    let logs = JSON.parse(localStorage.getItem("logs") || "{}");
+    let withdrawals = JSON.parse(localStorage.getItem("withdrawals") || "{}");
     let currentUser = localStorage.getItem("currentUser");
 
     const DAILY_LIMIT = 30;
@@ -115,6 +138,65 @@
       document.getElementById("user-email").innerText = currentUser;
       document.getElementById("balance").innerText = (balances[currentUser] || 0).toFixed(2);
       document.getElementById("viewsLeft").innerText = DAILY_LIMIT - (views[currentUser]?.count || 0);
+
+      renderLogs();
+      updateWithdrawButton();
+    }
+
+    function renderLogs() {
+      const logBox = document.getElementById("earnings-log");
+      const userLogs = logs[currentUser] || [];
+      logBox.innerHTML = "<strong>📜 Earnings Log:</strong><br>";
+      userLogs.forEach(entry => {
+        logBox.innerHTML += `<div class="log-entry">+ $${entry.amount.toFixed(3)} - ${entry.source} - ${entry.time}</div>`;
+      });
+    }
+
+    function updateWithdrawButton() {
+      const btn = document.getElementById("withdraw-btn");
+      if (withdrawals[currentUser]) {
+        btn.disabled = true;
+        btn.innerText = "⏳ Withdraw Requested";
+        btn.classList.add("requested");
+      }
+    }
+
+    function requestWithdraw() {
+      if (!balances[currentUser] || balances[currentUser] < 0.01) {
+        alert("Minimum balance required: $0.01");
+        return;
+      }
+      withdrawals[currentUser] = {
+        amount: balances[currentUser],
+        time: new Date().toLocaleString()
+      };
+      localStorage.setItem("withdrawals", JSON.stringify(withdrawals));
+      alert("Withdraw request submitted.");
+      updateWithdrawButton();
+    }
+
+    function addSimulatedCredit(source) {
+      resetDailyViews();
+      if (views[currentUser].count >= DAILY_LIMIT) {
+        alert("You've reached the daily limit of 30 views.");
+        return;
+      }
+
+      const amount = 0.007;
+      balances[currentUser] = (balances[currentUser] || 0) + amount;
+      views[currentUser].count += 1;
+
+      const now = new Date();
+      const time = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+      if (!logs[currentUser]) logs[currentUser] = [];
+      logs[currentUser].unshift({ amount, source, time });
+
+      localStorage.setItem("balances", JSON.stringify(balances));
+      localStorage.setItem("views", JSON.stringify(views));
+      localStorage.setItem("logs", JSON.stringify(logs));
+
+      updateDashboard();
     }
 
     function showLogin() {
@@ -157,9 +239,14 @@
       users[email] = password;
       balances[email] = 0;
       views[email] = { count: 0, date: new Date().toLocaleDateString() };
+      logs[email] = [];
+      withdrawals[email] = null;
+
       localStorage.setItem("users", JSON.stringify(users));
       localStorage.setItem("balances", JSON.stringify(balances));
       localStorage.setItem("views", JSON.stringify(views));
+      localStorage.setItem("logs", JSON.stringify(logs));
+      localStorage.setItem("withdrawals", JSON.stringify(withdrawals));
       alert("Account created! Please log in.");
       showLogin();
     }
@@ -179,22 +266,8 @@
       }
     }
 
-    function addSimulatedCredit() {
-      resetDailyViews();
-      if (views[currentUser].count >= DAILY_LIMIT) {
-        alert("You've reached the daily limit of 30 views.");
-        return;
-      }
-      // 70% to user of $0.01 = $0.007
-      balances[currentUser] = (balances[currentUser] || 0) + 0.007;
-      views[currentUser].count += 1;
-      localStorage.setItem("balances", JSON.stringify(balances));
-      localStorage.setItem("views", JSON.stringify(views));
-      updateDashboard();
-    }
-
     function openCPX() {
-      addSimulatedCredit();
+      addSimulatedCredit("CPX");
       const app_id = "28541";
       const secure_hash = "qTNDcrRbH2XGbK4oT1QvWODM21PiXGMf";
       const cpxURL = `https://offers.cpx-research.com/index.php?app_id=${app_id}&ext_user_id=${currentUser}&secure_hash=${secure_hash}`;
@@ -202,7 +275,7 @@
     }
 
     function openAdGem() {
-      addSimulatedCredit();
+      addSimulatedCredit("AdGem");
       const adgemAppId = "30896";
       const adgemURL = `https://api.adgem.com/v1/wall?appid=${adgemAppId}&playerid=${currentUser}`;
       window.open(adgemURL, "_blank");
