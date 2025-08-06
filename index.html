@@ -1,119 +1,116 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>70/30 Earnings App</title>
-  <style>
-    body {
-      font-family: Arial, sans-serif;
-      padding: 20px;
-      background-color: #111;
-      color: #eee;
-    }
-    h2 {
-      color: #00d1ff;
-    }
-    input, button {
-      padding: 10px;
-      font-size: 16px;
-    }
-    iframe {
-      width: 100%;
-      height: 500px;
-      border: none;
-      margin-bottom: 20px;
-    }
-    #auth, #main {
-      margin-top: 20px;
-    }
-    .hidden {
-      display: none;
-    }
-  </style>
+  <title>70/30 Earnings</title>
 </head>
 <body>
+  <h1>💸 70/30 Earnings App</h1>
 
-  <h1>💰 Welcome to 70/30 Earnings</h1>
-
-  <div id="auth">
-    <input type="email" id="email" placeholder="Enter your email">
+  <div id="login-form">
+    <input type="email" id="email" placeholder="Enter your email" required />
+    <input type="password" id="password" placeholder="Enter your password" required />
     <button onclick="login()">Login</button>
+    <button onclick="createAccount()">Create Account</button>
   </div>
 
-  <div id="main" class="hidden">
-    <p id="welcome"></p>
-    <p><strong>Balance:</strong> $<span id="balance">0.00</span></p>
-    <button onclick="logout()">Log Out</button>
-    <br><br>
-    <button onclick="watchAd()">📺 Watch Ad (+$0.007)</button>
+  <div id="main-app" style="display:none;">
+    <p>Welcome, <span id="user-email"></span></p>
+    <p>Your Balance: $<span id="balance">0.00</span></p>
+    <button onclick="watchAd()">📺 Watch Ad</button>
+    <button onclick="refreshBalance()">🔄 Refresh Balance</button>
+    <button onclick="logout()">🚪 Logout</button>
 
     <h2>📋 CPX Research Offerwall</h2>
-    <iframe id="cpx-frame"></iframe>
+    <iframe id="cpx-frame" width="100%" height="400"></iframe>
 
     <h2>🎁 AdGem Offerwall</h2>
-    <iframe id="adgem-frame"></iframe>
+    <iframe id="adgem-frame" width="100%" height="400"></iframe>
   </div>
 
   <script>
-    const emailInput = document.getElementById("email");
-    const authDiv = document.getElementById("auth");
-    const mainDiv = document.getElementById("main");
-    const welcome = document.getElementById("welcome");
-    const balanceSpan = document.getElementById("balance");
-    const cpxFrame = document.getElementById("cpx-frame");
-    const adgemFrame = document.getElementById("adgem-frame");
+    const backend = "https://seven030app-backend.onrender.com";
 
-    const backendURL = "https://seven030app-backend.onrender.com";
+    async function login() {
+      const email = document.getElementById("email").value;
+      const password = document.getElementById("password").value;
 
-    function login() {
-      const email = emailInput.value.trim().toLowerCase();
-      if (!email) return alert("Please enter a valid email.");
-      localStorage.setItem("user", email);
-      loadUser(email);
-    }
+      const res = await fetch(`${backend}/login`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password })
+      });
 
-    function logout() {
-      localStorage.removeItem("user");
-      location.reload();
-    }
-
-    function loadUser(email) {
-      authDiv.classList.add("hidden");
-      mainDiv.classList.remove("hidden");
-      welcome.textContent = `Welcome, ${email}`;
-      cpxFrame.src = `https://offers.cpx-research.com/index.php?app_id=28541&ext_user_id=${email}&secure_hash=qTNDcrRbH2XGbK4oT1QvWODM21PiXGMf`;
-      adgemFrame.src = `https://api.adgem.com/v1/wall?appid=30896&playerid=testuser@example.com&subid=${email}&gid=1`;
-      refreshBalance(email);
-    }
-
-    async function refreshBalance(email) {
-      try {
-        const res = await fetch(`${backendURL}/balance?user=${email}`);
-        const data = await res.json();
-        balanceSpan.textContent = (data.balance || 0).toFixed(4);
-      } catch (err) {
-        console.error("Balance error:", err);
-        balanceSpan.textContent = "0.00";
+      const data = await res.json();
+      if (data.success) {
+        localStorage.setItem("userEmail", email);
+        showMainApp(email);
+      } else {
+        alert("Login failed.");
       }
+    }
+
+    async function createAccount() {
+      const email = document.getElementById("email").value;
+      const password = document.getElementById("password").value;
+
+      const res = await fetch(`${backend}/create_account`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password })
+      });
+
+      const data = await res.json();
+      if (data.success) {
+        localStorage.setItem("userEmail", email);
+        showMainApp(email);
+      } else {
+        alert("Account creation failed.");
+      }
+    }
+
+    function showMainApp(email) {
+      document.getElementById("login-form").style.display = "none";
+      document.getElementById("main-app").style.display = "block";
+      document.getElementById("user-email").innerText = email;
+
+      document.getElementById("cpx-frame").src =
+        `https://offers.cpx-research.com/index.php?app_id=28541&ext_user_id=${email}&secure_hash=qTNDcrRbH2XGbK4oT1QvWODM21PiXGMf`;
+
+      document.getElementById("adgem-frame").src =
+        `https://api.adgem.com/v1/wall?appid=30896&playerid=${email}&subid=${email}&gid=1`;
+
+      refreshBalance();
+    }
+
+    async function refreshBalance() {
+      const email = localStorage.getItem("userEmail");
+      if (!email) return;
+
+      const res = await fetch(`${backend}/balance?user=${email}`);
+      const data = await res.json();
+      document.getElementById("balance").innerText = data.balance.toFixed(2);
     }
 
     async function watchAd() {
-      const email = localStorage.getItem("user");
-      if (!email) return alert("Not logged in");
-      try {
-        const res = await fetch(`${backendURL}/watch_ad?user=${email}`);
-        await refreshBalance(email);
-        alert("✅ Ad watched! You earned $0.007");
-      } catch (err) {
-        alert("Failed to reward ad");
-      }
+      const email = localStorage.getItem("userEmail");
+      const res = await fetch(`${backend}/watch_ad?user=${email}`);
+      const data = await res.json();
+      refreshBalance();
+      alert(data.message);
     }
 
-    // Auto-login
-    const savedEmail = localStorage.getItem("user");
-    if (savedEmail) {
-      emailInput.value = savedEmail;
-      loadUser(savedEmail);
+    function logout() {
+      localStorage.removeItem("userEmail");
+      window.location.reload();
     }
+
+    // Auto-login if stored
+    window.onload = () => {
+      const savedEmail = localStorage.getItem("userEmail");
+      if (savedEmail) {
+        showMainApp(savedEmail);
+      }
+    };
   </script>
 </body>
 </html>
