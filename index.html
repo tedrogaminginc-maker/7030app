@@ -1,28 +1,42 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-  <meta charset="UTF-8" />
   <title>70/30 Earnings</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <style>
     body {
       font-family: Arial, sans-serif;
       padding: 20px;
-      background: #f9f9f9;
+      background: #f2f2f2;
     }
-    #dashboard {
-      display: none;
+    input, button {
+      margin: 10px 0;
+      padding: 10px;
+      font-size: 16px;
+      width: 100%;
+      max-width: 300px;
     }
-    .hidden {
-      display: none;
+    iframe {
+      width: 100%;
+      height: 500px;
+      border: 1px solid #ccc;
+      margin-bottom: 20px;
+    }
+    #logout-container {
+      position: absolute;
+      top: 10px;
+      right: 10px;
     }
   </style>
 </head>
 <body>
+  <div id="logout-container">
+    <button onclick="logout()">Logout</button>
+  </div>
+
   <h1>🔐 70/30 Earnings</h1>
 
-  <!-- LOGIN / SIGNUP -->
-  <div id="auth">
+  <div id="auth-section">
     <input type="email" id="email" placeholder="Email" required><br>
     <input type="password" id="password" placeholder="Password" required><br>
     <button onclick="login()">Login</button>
@@ -30,120 +44,107 @@
     <button onclick="forgotPassword()">Forgot Password</button>
   </div>
 
-  <!-- DASHBOARD -->
-  <div id="dashboard">
-    <p>Welcome, <span id="userEmailDisplay"></span></p>
-    <p>💰 Balance: $<span id="balanceDisplay">0.00</span></p>
-
-    <button onclick="watchAd()">▶️ Watch Ad (30/day)</button><br><br>
+  <div id="dashboard" style="display:none;">
+    <h2>💰 Balance: <span id="balance">$0.00</span></h2>
 
     <h2>📋 CPX Research Offerwall</h2>
-    <iframe id="cpxFrame" width="100%" height="300"></iframe>
+    <iframe id="cpx-iframe"></iframe>
 
     <h2>🎁 AdGem Offerwall</h2>
-    <iframe id="adgemFrame" width="100%" height="300"></iframe><br><br>
-
-    <button onclick="logout()">Logout</button>
+    <iframe id="adgem-iframe"></iframe>
   </div>
 
   <div id="message"></div>
 
   <script>
-    let currentUser = null;
+    const backendURL = "https://seven030app-backend.onrender.com";
+    const emailInput = document.getElementById("email");
+    const passwordInput = document.getElementById("password");
+    const messageDiv = document.getElementById("message");
 
-    // Try to load user from local storage
-    window.onload = () => {
-      const savedEmail = localStorage.getItem("userEmail");
-      const savedPassword = localStorage.getItem("userPassword");
-      if (savedEmail && savedPassword) {
-        document.getElementById("email").value = savedEmail;
-        document.getElementById("password").value = savedPassword;
-        login(savedEmail, savedPassword);
-      }
-    };
+    function setMessage(msg) {
+      messageDiv.innerText = msg;
+    }
 
-    async function login(email, password) {
-      email = email || document.getElementById("email").value;
-      password = password || document.getElementById("password").value;
+    function showDashboard(email) {
+      document.getElementById("auth-section").style.display = "none";
+      document.getElementById("dashboard").style.display = "block";
 
-      const res = await fetch("https://seven030app-backend.onrender.com/login", {
+      // Set iframe URLs
+      document.getElementById("cpx-iframe").src = `https://offers.cpx-research.com/index.php?app_id=28541&ext_user_id=${email}&secure_hash=qTNDcrRbH2XGbK4oT1QvWODM21PiXGMf`;
+      document.getElementById("adgem-iframe").src = `https://api.adgem.com/v1/wall?appid=30896&playerid=${email}&subid=${email}&gid=1`;
+
+      refreshBalance(email);
+    }
+
+    async function login() {
+      const email = emailInput.value;
+      const password = passwordInput.value;
+
+      const res = await fetch(`${backendURL}/login`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, password })
       });
 
       const data = await res.json();
-      document.getElementById("message").innerText = data.message;
+      setMessage(data.message);
 
       if (data.success) {
         localStorage.setItem("userEmail", email);
-        localStorage.setItem("userPassword", password);
-        currentUser = email;
-        showDashboard();
+        showDashboard(email);
       }
     }
 
     async function createAccount() {
-      const email = document.getElementById("email").value;
-      const password = document.getElementById("password").value;
+      const email = emailInput.value;
+      const password = passwordInput.value;
 
-      const res = await fetch("https://seven030app-backend.onrender.com/create-account", {
+      const res = await fetch(`${backendURL}/create_account`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, password })
       });
 
       const data = await res.json();
-      document.getElementById("message").innerText = data.message;
+      setMessage(data.message);
+
+      if (data.success) {
+        localStorage.setItem("userEmail", email);
+        showDashboard(email);
+      }
     }
 
     async function forgotPassword() {
-      const email = document.getElementById("email").value;
-      const res = await fetch("https://seven030app-backend.onrender.com/forgot-password", {
+      const email = emailInput.value;
+      const res = await fetch(`${backendURL}/forgot_password`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email })
       });
 
       const data = await res.json();
-      document.getElementById("message").innerText = data.message;
+      setMessage(data.message);
     }
 
     function logout() {
       localStorage.removeItem("userEmail");
-      localStorage.removeItem("userPassword");
-      currentUser = null;
-      document.getElementById("auth").style.display = "block";
-      document.getElementById("dashboard").style.display = "none";
-      document.getElementById("message").innerText = "Logged out.";
+      location.reload();
     }
 
-    async function showDashboard() {
-      document.getElementById("auth").style.display = "none";
-      document.getElementById("dashboard").style.display = "block";
-      document.getElementById("userEmailDisplay").innerText = currentUser;
-
-      document.getElementById("cpxFrame").src =
-        `https://offers.cpx-research.com/index.php?app_id=28541&ext_user_id=${currentUser}&secure_hash=qTNDcrRbH2XGbK4oT1QvWODM21PiXGMf`;
-
-      document.getElementById("adgemFrame").src =
-        `https://api.adgem.com/v1/wall?appid=30896&playerid=${currentUser}&subid=${currentUser}&gid=1`;
-
-      refreshBalance();
-    }
-
-    async function refreshBalance() {
-      const res = await fetch(`https://seven030app-backend.onrender.com/balance?user=${currentUser}`);
+    async function refreshBalance(email) {
+      const res = await fetch(`${backendURL}/balance?user=${email}`);
       const data = await res.json();
-      document.getElementById("balanceDisplay").innerText = parseFloat(data.balance).toFixed(2);
+      document.getElementById("balance").innerText = `$${parseFloat(data.balance).toFixed(2)}`;
     }
 
-    async function watchAd() {
-      const res = await fetch(`https://seven030app-backend.onrender.com/watch-ad?user=${currentUser}`);
-      const data = await res.json();
-      document.getElementById("message").innerText = data.message;
-      refreshBalance();
-    }
+    // Auto-login if session exists
+    window.onload = () => {
+      const savedEmail = localStorage.getItem("userEmail");
+      if (savedEmail) {
+        showDashboard(savedEmail);
+      }
+    };
   </script>
 </body>
 </html>
