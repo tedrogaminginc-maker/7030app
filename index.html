@@ -2,287 +2,70 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>7030 Earnings</title>
+  <title>70/30 Watch & Earn</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <style>
     body {
-      margin: 0;
-      font-family: Arial, sans-serif;
-      background: #111;
+      background: #121212;
       color: #fff;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      min-height: 100vh;
-      padding: 20px;
-    }
-
-    h1 {
-      margin-bottom: 10px;
-    }
-
-    #login-box, #register-box, #dashboard {
-      background: #222;
-      padding: 20px;
-      border-radius: 10px;
-      display: none;
-      flex-direction: column;
-      gap: 10px;
-      width: 100%;
-      max-width: 400px;
-    }
-
-    input, button {
-      padding: 12px;
-      border: none;
-      border-radius: 5px;
-      font-size: 16px;
-    }
-
-    button {
-      background-color: #28a745;
-      color: white;
-      cursor: pointer;
-    }
-
-    button:hover {
-      background-color: #218838;
-    }
-
-    .link-btn {
-      background: none;
-      color: #ccc;
+      font-family: Arial, sans-serif;
       text-align: center;
-      font-size: 14px;
-      text-decoration: underline;
+      padding: 20px;
+    }
+    h1 {
+      color: #00ffcc;
+    }
+    #balance {
+      font-size: 24px;
+      margin: 20px 0;
+    }
+    button {
+      padding: 12px 24px;
+      margin: 10px;
+      font-size: 18px;
+      background: #00ffcc;
+      border: none;
+      border-radius: 8px;
       cursor: pointer;
     }
-
-    .stats {
-      font-size: 16px;
-      margin-top: 10px;
-    }
-
-    .log {
-      font-size: 14px;
-      background: #333;
-      margin-top: 10px;
-      padding: 10px;
-      border-radius: 5px;
-      max-height: 200px;
-      overflow-y: auto;
-    }
-
-    .log-entry {
-      margin-bottom: 6px;
-    }
-
-    .requested {
-      color: yellow;
+    iframe {
+      width: 100%;
+      height: 600px;
+      border: none;
+      border-radius: 10px;
+      margin-top: 20px;
     }
   </style>
 </head>
 <body>
-  <h1>7030 Earnings</h1>
-  <div id="login-box" style="display:flex;">
-    <input type="email" id="login-email" placeholder="Email" />
-    <input type="password" id="login-password" placeholder="Password" />
-    <button onclick="login()">Login</button>
-    <div class="link-btn" onclick="showRegister()">Create Account</div>
-    <div class="link-btn" onclick="recoverPassword()">Forgot Password?</div>
-  </div>
-  <div id="register-box">
-    <input type="email" id="register-email" placeholder="Email" />
-    <input type="password" id="register-password" placeholder="Password" />
-    <button onclick="register()">Register</button>
-    <div class="link-btn" onclick="showLogin()">Back to Login</div>
-  </div>
 
-  <div id="dashboard">
-    <p>Welcome, <span id="user-email"></span></p>
-    <button onclick="openCPX()">🎯 Open CPX Research</button>
-    <button onclick="openAdGem()">💎 Open AdGem Offers</button>
-    <button onclick="watchAd()">🎥 Watch Ad ($0.01)</button>
-    <div class="stats">
-      💰 Balance: $<span id="balance">0.00</span><br>
-      🔁 Ads Watched Today: <span id="viewsLeft">30</span>/30
-    </div>
-    <button id="withdraw-btn" onclick="requestWithdraw()">💸 Request Withdraw</button>
-    <div class="log" id="earnings-log"></div>
-    <button onclick="logout()">Logout</button>
-  </div>
+  <h1>Welcome to 70/30 Watch & Earn</h1>
 
-<script>
-  let users = JSON.parse(localStorage.getItem("users") || "{}");
-  let balances = JSON.parse(localStorage.getItem("balances") || "{}");
-  let adViews = JSON.parse(localStorage.getItem("adViews") || "{}");
-  let logs = JSON.parse(localStorage.getItem("logs") || "{}");
-  let withdrawals = JSON.parse(localStorage.getItem("withdrawals") || "{}");
-  let currentUser = localStorage.getItem("currentUser");
+  <div id="balance">Balance: $0.00</div>
+  <button onclick="refreshBalance()">🔄 Refresh Balance</button>
 
-  const AD_LIMIT = 30;
+  <h2>📋 CPX Research Offerwall</h2>
+  <iframe src="https://offers.cpx-research.com/index.php?app_id=28541&ext_user_id=syfrettjoe@gmail.com&secure_hash=qTNDcrRbH2XGbK4oT1QvWODM21PiXGMf"></iframe>
 
-  function resetDailyAdViews() {
-    const today = new Date().toLocaleDateString();
-    if (!adViews[currentUser] || adViews[currentUser].date !== today) {
-      adViews[currentUser] = { count: 0, date: today };
-      localStorage.setItem("adViews", JSON.stringify(adViews));
-    }
-  }
+  <h2>🎁 AdGem Offerwall</h2>
+  <iframe src="https://api.adgem.com/v1/wall?appid=30896&playerid=syfrettjoe@gmail.com&subid=syfrettjoe@gmail.com&gid=1"></iframe>
 
-  function updateDashboard() {
-    document.getElementById("user-email").innerText = currentUser;
-    document.getElementById("balance").innerText = (balances[currentUser] || 0).toFixed(2);
-    document.getElementById("viewsLeft").innerText = AD_LIMIT - (adViews[currentUser]?.count || 0);
-    renderLogs();
-    updateWithdrawButton();
-  }
+  <script>
+    const userEmail = "syfrettjoe@gmail.com";
 
-  function renderLogs() {
-    const logBox = document.getElementById("earnings-log");
-    const userLogs = logs[currentUser] || [];
-    logBox.innerHTML = "<strong>📜 Earnings Log:</strong><br>";
-    userLogs.forEach(entry => {
-      logBox.innerHTML += `<div class="log-entry">+ $${entry.amount.toFixed(3)} - ${entry.source} - ${entry.time}</div>`;
-    });
-  }
-
-  function updateWithdrawButton() {
-    const btn = document.getElementById("withdraw-btn");
-    if (withdrawals[currentUser]) {
-      btn.disabled = true;
-      btn.innerText = "⏳ Withdraw Requested";
-      btn.classList.add("requested");
-    }
-  }
-
-  function requestWithdraw() {
-    if (!balances[currentUser] || balances[currentUser] < 0.01) {
-      alert("Minimum balance required: $0.01");
-      return;
-    }
-    withdrawals[currentUser] = {
-      amount: balances[currentUser],
-      time: new Date().toLocaleString()
-    };
-    localStorage.setItem("withdrawals", JSON.stringify(withdrawals));
-    alert("Withdraw request submitted.");
-    updateWithdrawButton();
-  }
-
-  function addToBalance(amount, source) {
-    balances[currentUser] = (balances[currentUser] || 0) + amount;
-
-    const now = new Date();
-    const time = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-
-    if (!logs[currentUser]) logs[currentUser] = [];
-    logs[currentUser].unshift({ amount, source, time });
-
-    localStorage.setItem("balances", JSON.stringify(balances));
-    localStorage.setItem("logs", JSON.stringify(logs));
-    updateDashboard();
-  }
-
-  function watchAd() {
-    resetDailyAdViews();
-    if (adViews[currentUser].count >= AD_LIMIT) {
-      alert("You’ve reached the daily ad limit.");
-      return;
+    async function refreshBalance() {
+      try {
+        const res = await fetch(`https://seven030app-backend.onrender.com/balance?user=${userEmail}`);
+        const data = await res.json();
+        const bal = parseFloat(data.balance).toFixed(2);
+        document.getElementById("balance").innerText = `Balance: $${bal}`;
+      } catch (err) {
+        document.getElementById("balance").innerText = "Balance: Error";
+      }
     }
 
-    adViews[currentUser].count += 1;
-    localStorage.setItem("adViews", JSON.stringify(adViews));
-    addToBalance(0.007, "Watch Ad");
-  }
-
-  function openCPX() {
-    const app_id = "28541";
-    const secure_hash = "qTNDcrRbH2XGbK4oT1QvWODM21PiXGMf";
-    const cpxURL = `https://offers.cpx-research.com/index.php?app_id=${app_id}&ext_user_id=${currentUser}&secure_hash=${secure_hash}`;
-    window.open(cpxURL, "_blank");
-  }
-
-  function openAdGem() {
-    const adgemAppId = "30896";
-    const adgemURL = `https://api.adgem.com/v1/wall?appid=${adgemAppId}&playerid=${currentUser}`;
-    window.open(adgemURL, "_blank");
-  }
-
-  function login() {
-    const email = document.getElementById("login-email").value;
-    const password = document.getElementById("login-password").value;
-    if (users[email] && users[email] === password) {
-      currentUser = email;
-      localStorage.setItem("currentUser", email);
-      showDashboard();
-    } else {
-      alert("Invalid login.");
-    }
-  }
-
-  function register() {
-    const email = document.getElementById("register-email").value;
-    const password = document.getElementById("register-password").value;
-    if (!email || !password) return alert("Fill all fields");
-    if (users[email]) return alert("Account already exists.");
-    users[email] = password;
-    balances[email] = 0;
-    adViews[email] = { count: 0, date: new Date().toLocaleDateString() };
-    logs[email] = [];
-    withdrawals[email] = null;
-
-    localStorage.setItem("users", JSON.stringify(users));
-    localStorage.setItem("balances", JSON.stringify(balances));
-    localStorage.setItem("adViews", JSON.stringify(adViews));
-    localStorage.setItem("logs", JSON.stringify(logs));
-    localStorage.setItem("withdrawals", JSON.stringify(withdrawals));
-    alert("Account created! Please log in.");
-    showLogin();
-  }
-
-  function logout() {
-    localStorage.removeItem("currentUser");
-    currentUser = null;
-    showLogin();
-  }
-
-  function recoverPassword() {
-    const email = prompt("Enter your registered email:");
-    if (users[email]) {
-      alert(`Your password is: ${users[email]}`);
-    } else {
-      alert("No account with that email.");
-    }
-  }
-
-  function showLogin() {
-    document.getElementById('login-box').style.display = 'flex';
-    document.getElementById('register-box').style.display = 'none';
-    document.getElementById('dashboard').style.display = 'none';
-  }
-
-  function showRegister() {
-    document.getElementById('login-box').style.display = 'none';
-    document.getElementById('register-box').style.display = 'flex';
-    document.getElementById('dashboard').style.display = 'none';
-  }
-
-  function showDashboard() {
-    document.getElementById('login-box').style.display = 'none';
-    document.getElementById('register-box').style.display = 'none';
-    document.getElementById('dashboard').style.display = 'flex';
-    resetDailyAdViews();
-    updateDashboard();
-  }
-
-  if (currentUser) {
-    showDashboard();
-  } else {
-    showLogin();
-  }
-</script>
+    window.onload = refreshBalance;
+  </script>
 
 </body>
 </html>
