@@ -1,40 +1,51 @@
 <!DOCTYPE html>
 <html>
 <head>
+  <meta charset="UTF-8" />
   <title>70/30 Earnings</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: #222;
+      color: #fff;
+      text-align: center;
+      padding-top: 100px;
+    }
+    input, button {
+      padding: 10px;
+      margin: 10px;
+      font-size: 18px;
+    }
+    #message {
+      margin-top: 20px;
+      font-weight: bold;
+    }
+    a {
+      color: #00f0ff;
+      display: block;
+      margin-top: 10px;
+      font-size: 16px;
+    }
+  </style>
 </head>
 <body>
-  <h1>💸 70/30 Earnings App</h1>
+  <h1>💰 70/30 Earnings</h1>
 
-  <div id="login-form">
-    <input type="email" id="email" placeholder="Enter your email" required />
-    <input type="password" id="password" placeholder="Enter your password" required />
-    <button onclick="login()">Login</button>
-    <button onclick="createAccount()">Create Account</button>
-  </div>
+  <input type="email" id="email" placeholder="Email" /><br>
+  <input type="password" id="password" placeholder="Password" /><br>
 
-  <div id="main-app" style="display:none;">
-    <p>Welcome, <span id="user-email"></span></p>
-    <p>Your Balance: $<span id="balance">0.00</span></p>
-    <button onclick="watchAd()">📺 Watch Ad</button>
-    <button onclick="refreshBalance()">🔄 Refresh Balance</button>
-    <button onclick="logout()">🚪 Logout</button>
+  <button onclick="login()">Login</button>
+  <button onclick="register()">Create Account</button>
+  <a href="#" onclick="forgotPassword()">Forgot Password?</a>
 
-    <h2>📋 CPX Research Offerwall</h2>
-    <iframe id="cpx-frame" width="100%" height="400"></iframe>
-
-    <h2>🎁 AdGem Offerwall</h2>
-    <iframe id="adgem-frame" width="100%" height="400"></iframe>
-  </div>
+  <div id="message"></div>
 
   <script>
-    const backend = "https://seven030app-backend.onrender.com";
-
     async function login() {
       const email = document.getElementById("email").value;
       const password = document.getElementById("password").value;
 
-      const res = await fetch(`${backend}/login`, {
+      const res = await fetch("https://seven030app-backend.onrender.com/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, password })
@@ -42,73 +53,46 @@
 
       const data = await res.json();
       if (data.success) {
-        localStorage.setItem("userEmail", email);
-        showMainApp(email);
+        localStorage.setItem("user", email);
+        window.location.href = "dashboard.html";
       } else {
-        alert("Login failed.");
+        document.getElementById("message").innerText = data.message;
       }
     }
 
-    async function createAccount() {
+    async function register() {
       const email = document.getElementById("email").value;
       const password = document.getElementById("password").value;
 
-      const res = await fetch(`${backend}/create_account`, {
+      const res = await fetch("https://seven030app-backend.onrender.com/register", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, password })
       });
 
       const data = await res.json();
-      if (data.success) {
-        localStorage.setItem("userEmail", email);
-        showMainApp(email);
-      } else {
-        alert("Account creation failed.");
-      }
+      document.getElementById("message").innerText = data.message;
     }
 
-    function showMainApp(email) {
-      document.getElementById("login-form").style.display = "none";
-      document.getElementById("main-app").style.display = "block";
-      document.getElementById("user-email").innerText = email;
-
-      document.getElementById("cpx-frame").src =
-        `https://offers.cpx-research.com/index.php?app_id=28541&ext_user_id=${email}&secure_hash=qTNDcrRbH2XGbK4oT1QvWODM21PiXGMf`;
-
-      document.getElementById("adgem-frame").src =
-        `https://api.adgem.com/v1/wall?appid=30896&playerid=${email}&subid=${email}&gid=1`;
-
-      refreshBalance();
-    }
-
-    async function refreshBalance() {
-      const email = localStorage.getItem("userEmail");
+    async function forgotPassword() {
+      const email = prompt("Enter your email to reset password:");
       if (!email) return;
 
-      const res = await fetch(`${backend}/balance?user=${email}`);
+      const res = await fetch("https://seven030app-backend.onrender.com/forgot-password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email })
+      });
+
       const data = await res.json();
-      document.getElementById("balance").innerText = data.balance.toFixed(2);
+      document.getElementById("message").innerText = data.message;
     }
 
-    async function watchAd() {
-      const email = localStorage.getItem("userEmail");
-      const res = await fetch(`${backend}/watch_ad?user=${email}`);
-      const data = await res.json();
-      refreshBalance();
-      alert(data.message);
-    }
-
-    function logout() {
-      localStorage.removeItem("userEmail");
-      window.location.reload();
-    }
-
-    // Auto-login if stored
+    // Auto-login if saved
     window.onload = () => {
-      const savedEmail = localStorage.getItem("userEmail");
-      if (savedEmail) {
-        showMainApp(savedEmail);
+      const saved = localStorage.getItem("user");
+      if (saved) {
+        window.location.href = "dashboard.html";
       }
     };
   </script>
