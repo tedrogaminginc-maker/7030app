@@ -58,6 +58,11 @@
       text-decoration: underline;
       cursor: pointer;
     }
+
+    .stats {
+      font-size: 16px;
+      margin-top: 10px;
+    }
   </style>
 </head>
 <body>
@@ -83,12 +88,34 @@
     <p>Welcome, <span id="user-email"></span></p>
     <button onclick="openCPX()">🎯 Open CPX Research</button>
     <button onclick="openAdGem()">💎 Open AdGem Offers</button>
+    <div class="stats">
+      💰 Balance: $<span id="balance">0.00</span><br>
+      🔁 Views left today: <span id="viewsLeft">30</span>/30
+    </div>
     <button onclick="logout()">Logout</button>
   </div>
 
   <script>
     let users = JSON.parse(localStorage.getItem("users") || "{}");
+    let balances = JSON.parse(localStorage.getItem("balances") || "{}");
+    let views = JSON.parse(localStorage.getItem("views") || "{}");
     let currentUser = localStorage.getItem("currentUser");
+
+    const DAILY_LIMIT = 30;
+
+    function resetDailyViews() {
+      const today = new Date().toLocaleDateString();
+      if (!views[currentUser] || views[currentUser].date !== today) {
+        views[currentUser] = { count: 0, date: today };
+        localStorage.setItem("views", JSON.stringify(views));
+      }
+    }
+
+    function updateDashboard() {
+      document.getElementById("user-email").innerText = currentUser;
+      document.getElementById("balance").innerText = (balances[currentUser] || 0).toFixed(2);
+      document.getElementById("viewsLeft").innerText = DAILY_LIMIT - (views[currentUser]?.count || 0);
+    }
 
     function showLogin() {
       document.getElementById('login-box').style.display = 'flex';
@@ -103,10 +130,11 @@
     }
 
     function showDashboard() {
-      document.getElementById('user-email').innerText = currentUser;
       document.getElementById('login-box').style.display = 'none';
       document.getElementById('register-box').style.display = 'none';
       document.getElementById('dashboard').style.display = 'flex';
+      resetDailyViews();
+      updateDashboard();
     }
 
     function login() {
@@ -127,7 +155,11 @@
       if (!email || !password) return alert("Fill all fields");
       if (users[email]) return alert("Account already exists.");
       users[email] = password;
+      balances[email] = 0;
+      views[email] = { count: 0, date: new Date().toLocaleDateString() };
       localStorage.setItem("users", JSON.stringify(users));
+      localStorage.setItem("balances", JSON.stringify(balances));
+      localStorage.setItem("views", JSON.stringify(views));
       alert("Account created! Please log in.");
       showLogin();
     }
@@ -147,7 +179,22 @@
       }
     }
 
+    function addSimulatedCredit() {
+      resetDailyViews();
+      if (views[currentUser].count >= DAILY_LIMIT) {
+        alert("You've reached the daily limit of 30 views.");
+        return;
+      }
+      // 70% to user of $0.01 = $0.007
+      balances[currentUser] = (balances[currentUser] || 0) + 0.007;
+      views[currentUser].count += 1;
+      localStorage.setItem("balances", JSON.stringify(balances));
+      localStorage.setItem("views", JSON.stringify(views));
+      updateDashboard();
+    }
+
     function openCPX() {
+      addSimulatedCredit();
       const app_id = "28541";
       const secure_hash = "qTNDcrRbH2XGbK4oT1QvWODM21PiXGMf";
       const cpxURL = `https://offers.cpx-research.com/index.php?app_id=${app_id}&ext_user_id=${currentUser}&secure_hash=${secure_hash}`;
@@ -155,6 +202,7 @@
     }
 
     function openAdGem() {
+      addSimulatedCredit();
       const adgemAppId = "30896";
       const adgemURL = `https://api.adgem.com/v1/wall?appid=${adgemAppId}&playerid=${currentUser}`;
       window.open(adgemURL, "_blank");
