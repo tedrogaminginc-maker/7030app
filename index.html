@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>7030 Earnings</title>
+  <style>
+    body {
+      margin: 0;
+      font-family: Arial, sans-serif;
+      background: #111;
+      color: #fff;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      padding: 20px;
+    }
+
+    h1 {
+      margin-bottom: 10px;
+    }
+
+    #login-box, #register-box, #dashboard {
+      background: #222;
+      padding: 20px;
+      border-radius: 10px;
+      display: none;
+      flex-direction: column;
+      gap: 10px;
+      width: 100%;
+      max-width: 350px;
+    }
+
+    input, button {
+      padding: 12px;
+      border: none;
+      border-radius: 5px;
+      font-size: 16px;
+    }
+
+    button {
+      background-color: #28a745;
+      color: white;
+      cursor: pointer;
+    }
+
+    button:hover {
+      background-color: #218838;
+    }
+
+    .link-btn {
+      background: none;
+      color: #ccc;
+      text-align: center;
+      font-size: 14px;
+      text-decoration: underline;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+
+  <h1>7030 Earnings</h1>
+
+  <div id="login-box" style="display:flex;">
+    <input type="email" id="login-email" placeholder="Email" />
+    <input type="password" id="login-password" placeholder="Password" />
+    <button onclick="login()">Login</button>
+    <div class="link-btn" onclick="showRegister()">Create Account</div>
+    <div class="link-btn" onclick="recoverPassword()">Forgot Password?</div>
+  </div>
+
+  <div id="register-box">
+    <input type="email" id="register-email" placeholder="Email" />
+    <input type="password" id="register-password" placeholder="Password" />
+    <button onclick="register()">Register</button>
+    <div class="link-btn" onclick="showLogin()">Back to Login</div>
+  </div>
+
+  <div id="dashboard">
+    <p>Welcome, <span id="user-email"></span></p>
+    <button onclick="openCPX()">Open CPX Offerwall</button>
+    <button onclick="logout()">Logout</button>
+  </div>
+
+  <script>
+    let users = JSON.parse(localStorage.getItem("users") || "{}");
+    let currentUser = localStorage.getItem("currentUser");
+
+    function showLogin() {
+      document.getElementById('login-box').style.display = 'flex';
+      document.getElementById('register-box').style.display = 'none';
+      document.getElementById('dashboard').style.display = 'none';
+    }
+
+    function showRegister() {
+      document.getElementById('login-box').style.display = 'none';
+      document.getElementById('register-box').style.display = 'flex';
+      document.getElementById('dashboard').style.display = 'none';
+    }
+
+    function showDashboard() {
+      document.getElementById('user-email').innerText = currentUser;
+      document.getElementById('login-box').style.display = 'none';
+      document.getElementById('register-box').style.display = 'none';
+      document.getElementById('dashboard').style.display = 'flex';
+    }
+
+    function login() {
+      const email = document.getElementById("login-email").value;
+      const password = document.getElementById("login-password").value;
+      if (users[email] && users[email] === password) {
+        currentUser = email;
+        localStorage.setItem("currentUser", email);
+        showDashboard();
+      } else {
+        alert("Invalid login.");
+      }
+    }
+
+    function register() {
+      const email = document.getElementById("register-email").value;
+      const password = document.getElementById("register-password").value;
+      if (!email || !password) return alert("Fill all fields");
+      if (users[email]) return alert("Account already exists.");
+      users[email] = password;
+      localStorage.setItem("users", JSON.stringify(users));
+      alert("Account created! Please log in.");
+      showLogin();
+    }
+
+    function logout() {
+      localStorage.removeItem("currentUser");
+      currentUser = null;
+      showLogin();
+    }
+
+    function recoverPassword() {
+      const email = prompt("Enter your registered email:");
+      if (users[email]) {
+        alert(`Your password is: ${users[email]}`);
+      } else {
+        alert("No account with that email.");
+      }
+    }
+
+    function openCPX() {
+      const app_id = "28541";
+      const secure_hash = "qTNDcrRbH2XGbK4oT1QvWODM21PiXGMf";
+      const cpxURL = `https://offers.cpx-research.com/index.php?app_id=${app_id}&ext_user_id=${currentUser}&secure_hash=${secure_hash}`;
+      window.open(cpxURL, "_blank");
+    }
+
+    if (currentUser) {
+      showDashboard();
+    } else {
+      showLogin();
+    }
+  </script>
+
+</body>
+</html>
