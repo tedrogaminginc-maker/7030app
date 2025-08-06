@@ -84,9 +84,7 @@
   </style>
 </head>
 <body>
-
   <h1>7030 Earnings</h1>
-
   <div id="login-box" style="display:flex;">
     <input type="email" id="login-email" placeholder="Email" />
     <input type="password" id="login-password" placeholder="Password" />
@@ -94,7 +92,6 @@
     <div class="link-btn" onclick="showRegister()">Create Account</div>
     <div class="link-btn" onclick="recoverPassword()">Forgot Password?</div>
   </div>
-
   <div id="register-box">
     <input type="email" id="register-email" placeholder="Email" />
     <input type="password" id="register-password" placeholder="Password" />
@@ -106,187 +103,186 @@
     <p>Welcome, <span id="user-email"></span></p>
     <button onclick="openCPX()">🎯 Open CPX Research</button>
     <button onclick="openAdGem()">💎 Open AdGem Offers</button>
+    <button onclick="watchAd()">🎥 Watch Ad ($0.01)</button>
     <div class="stats">
       💰 Balance: $<span id="balance">0.00</span><br>
-      🔁 Views left today: <span id="viewsLeft">30</span>/30
+      🔁 Ads Watched Today: <span id="viewsLeft">30</span>/30
     </div>
     <button id="withdraw-btn" onclick="requestWithdraw()">💸 Request Withdraw</button>
-
     <div class="log" id="earnings-log"></div>
     <button onclick="logout()">Logout</button>
   </div>
 
-  <script>
-    let users = JSON.parse(localStorage.getItem("users") || "{}");
-    let balances = JSON.parse(localStorage.getItem("balances") || "{}");
-    let views = JSON.parse(localStorage.getItem("views") || "{}");
-    let logs = JSON.parse(localStorage.getItem("logs") || "{}");
-    let withdrawals = JSON.parse(localStorage.getItem("withdrawals") || "{}");
-    let currentUser = localStorage.getItem("currentUser");
+<script>
+  let users = JSON.parse(localStorage.getItem("users") || "{}");
+  let balances = JSON.parse(localStorage.getItem("balances") || "{}");
+  let adViews = JSON.parse(localStorage.getItem("adViews") || "{}");
+  let logs = JSON.parse(localStorage.getItem("logs") || "{}");
+  let withdrawals = JSON.parse(localStorage.getItem("withdrawals") || "{}");
+  let currentUser = localStorage.getItem("currentUser");
 
-    const DAILY_LIMIT = 30;
+  const AD_LIMIT = 30;
 
-    function resetDailyViews() {
-      const today = new Date().toLocaleDateString();
-      if (!views[currentUser] || views[currentUser].date !== today) {
-        views[currentUser] = { count: 0, date: today };
-        localStorage.setItem("views", JSON.stringify(views));
-      }
+  function resetDailyAdViews() {
+    const today = new Date().toLocaleDateString();
+    if (!adViews[currentUser] || adViews[currentUser].date !== today) {
+      adViews[currentUser] = { count: 0, date: today };
+      localStorage.setItem("adViews", JSON.stringify(adViews));
+    }
+  }
+
+  function updateDashboard() {
+    document.getElementById("user-email").innerText = currentUser;
+    document.getElementById("balance").innerText = (balances[currentUser] || 0).toFixed(2);
+    document.getElementById("viewsLeft").innerText = AD_LIMIT - (adViews[currentUser]?.count || 0);
+    renderLogs();
+    updateWithdrawButton();
+  }
+
+  function renderLogs() {
+    const logBox = document.getElementById("earnings-log");
+    const userLogs = logs[currentUser] || [];
+    logBox.innerHTML = "<strong>📜 Earnings Log:</strong><br>";
+    userLogs.forEach(entry => {
+      logBox.innerHTML += `<div class="log-entry">+ $${entry.amount.toFixed(3)} - ${entry.source} - ${entry.time}</div>`;
+    });
+  }
+
+  function updateWithdrawButton() {
+    const btn = document.getElementById("withdraw-btn");
+    if (withdrawals[currentUser]) {
+      btn.disabled = true;
+      btn.innerText = "⏳ Withdraw Requested";
+      btn.classList.add("requested");
+    }
+  }
+
+  function requestWithdraw() {
+    if (!balances[currentUser] || balances[currentUser] < 0.01) {
+      alert("Minimum balance required: $0.01");
+      return;
+    }
+    withdrawals[currentUser] = {
+      amount: balances[currentUser],
+      time: new Date().toLocaleString()
+    };
+    localStorage.setItem("withdrawals", JSON.stringify(withdrawals));
+    alert("Withdraw request submitted.");
+    updateWithdrawButton();
+  }
+
+  function addToBalance(amount, source) {
+    balances[currentUser] = (balances[currentUser] || 0) + amount;
+
+    const now = new Date();
+    const time = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+    if (!logs[currentUser]) logs[currentUser] = [];
+    logs[currentUser].unshift({ amount, source, time });
+
+    localStorage.setItem("balances", JSON.stringify(balances));
+    localStorage.setItem("logs", JSON.stringify(logs));
+    updateDashboard();
+  }
+
+  function watchAd() {
+    resetDailyAdViews();
+    if (adViews[currentUser].count >= AD_LIMIT) {
+      alert("You’ve reached the daily ad limit.");
+      return;
     }
 
-    function updateDashboard() {
-      document.getElementById("user-email").innerText = currentUser;
-      document.getElementById("balance").innerText = (balances[currentUser] || 0).toFixed(2);
-      document.getElementById("viewsLeft").innerText = DAILY_LIMIT - (views[currentUser]?.count || 0);
+    adViews[currentUser].count += 1;
+    localStorage.setItem("adViews", JSON.stringify(adViews));
+    addToBalance(0.007, "Watch Ad");
+  }
 
-      renderLogs();
-      updateWithdrawButton();
-    }
+  function openCPX() {
+    const app_id = "28541";
+    const secure_hash = "qTNDcrRbH2XGbK4oT1QvWODM21PiXGMf";
+    const cpxURL = `https://offers.cpx-research.com/index.php?app_id=${app_id}&ext_user_id=${currentUser}&secure_hash=${secure_hash}`;
+    window.open(cpxURL, "_blank");
+  }
 
-    function renderLogs() {
-      const logBox = document.getElementById("earnings-log");
-      const userLogs = logs[currentUser] || [];
-      logBox.innerHTML = "<strong>📜 Earnings Log:</strong><br>";
-      userLogs.forEach(entry => {
-        logBox.innerHTML += `<div class="log-entry">+ $${entry.amount.toFixed(3)} - ${entry.source} - ${entry.time}</div>`;
-      });
-    }
+  function openAdGem() {
+    const adgemAppId = "30896";
+    const adgemURL = `https://api.adgem.com/v1/wall?appid=${adgemAppId}&playerid=${currentUser}`;
+    window.open(adgemURL, "_blank");
+  }
 
-    function updateWithdrawButton() {
-      const btn = document.getElementById("withdraw-btn");
-      if (withdrawals[currentUser]) {
-        btn.disabled = true;
-        btn.innerText = "⏳ Withdraw Requested";
-        btn.classList.add("requested");
-      }
-    }
-
-    function requestWithdraw() {
-      if (!balances[currentUser] || balances[currentUser] < 0.01) {
-        alert("Minimum balance required: $0.01");
-        return;
-      }
-      withdrawals[currentUser] = {
-        amount: balances[currentUser],
-        time: new Date().toLocaleString()
-      };
-      localStorage.setItem("withdrawals", JSON.stringify(withdrawals));
-      alert("Withdraw request submitted.");
-      updateWithdrawButton();
-    }
-
-    function addSimulatedCredit(source) {
-      resetDailyViews();
-      if (views[currentUser].count >= DAILY_LIMIT) {
-        alert("You've reached the daily limit of 30 views.");
-        return;
-      }
-
-      const amount = 0.007;
-      balances[currentUser] = (balances[currentUser] || 0) + amount;
-      views[currentUser].count += 1;
-
-      const now = new Date();
-      const time = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-
-      if (!logs[currentUser]) logs[currentUser] = [];
-      logs[currentUser].unshift({ amount, source, time });
-
-      localStorage.setItem("balances", JSON.stringify(balances));
-      localStorage.setItem("views", JSON.stringify(views));
-      localStorage.setItem("logs", JSON.stringify(logs));
-
-      updateDashboard();
-    }
-
-    function showLogin() {
-      document.getElementById('login-box').style.display = 'flex';
-      document.getElementById('register-box').style.display = 'none';
-      document.getElementById('dashboard').style.display = 'none';
-    }
-
-    function showRegister() {
-      document.getElementById('login-box').style.display = 'none';
-      document.getElementById('register-box').style.display = 'flex';
-      document.getElementById('dashboard').style.display = 'none';
-    }
-
-    function showDashboard() {
-      document.getElementById('login-box').style.display = 'none';
-      document.getElementById('register-box').style.display = 'none';
-      document.getElementById('dashboard').style.display = 'flex';
-      resetDailyViews();
-      updateDashboard();
-    }
-
-    function login() {
-      const email = document.getElementById("login-email").value;
-      const password = document.getElementById("login-password").value;
-      if (users[email] && users[email] === password) {
-        currentUser = email;
-        localStorage.setItem("currentUser", email);
-        showDashboard();
-      } else {
-        alert("Invalid login.");
-      }
-    }
-
-    function register() {
-      const email = document.getElementById("register-email").value;
-      const password = document.getElementById("register-password").value;
-      if (!email || !password) return alert("Fill all fields");
-      if (users[email]) return alert("Account already exists.");
-      users[email] = password;
-      balances[email] = 0;
-      views[email] = { count: 0, date: new Date().toLocaleDateString() };
-      logs[email] = [];
-      withdrawals[email] = null;
-
-      localStorage.setItem("users", JSON.stringify(users));
-      localStorage.setItem("balances", JSON.stringify(balances));
-      localStorage.setItem("views", JSON.stringify(views));
-      localStorage.setItem("logs", JSON.stringify(logs));
-      localStorage.setItem("withdrawals", JSON.stringify(withdrawals));
-      alert("Account created! Please log in.");
-      showLogin();
-    }
-
-    function logout() {
-      localStorage.removeItem("currentUser");
-      currentUser = null;
-      showLogin();
-    }
-
-    function recoverPassword() {
-      const email = prompt("Enter your registered email:");
-      if (users[email]) {
-        alert(`Your password is: ${users[email]}`);
-      } else {
-        alert("No account with that email.");
-      }
-    }
-
-    function openCPX() {
-      addSimulatedCredit("CPX");
-      const app_id = "28541";
-      const secure_hash = "qTNDcrRbH2XGbK4oT1QvWODM21PiXGMf";
-      const cpxURL = `https://offers.cpx-research.com/index.php?app_id=${app_id}&ext_user_id=${currentUser}&secure_hash=${secure_hash}`;
-      window.open(cpxURL, "_blank");
-    }
-
-    function openAdGem() {
-      addSimulatedCredit("AdGem");
-      const adgemAppId = "30896";
-      const adgemURL = `https://api.adgem.com/v1/wall?appid=${adgemAppId}&playerid=${currentUser}`;
-      window.open(adgemURL, "_blank");
-    }
-
-    if (currentUser) {
+  function login() {
+    const email = document.getElementById("login-email").value;
+    const password = document.getElementById("login-password").value;
+    if (users[email] && users[email] === password) {
+      currentUser = email;
+      localStorage.setItem("currentUser", email);
       showDashboard();
     } else {
-      showLogin();
+      alert("Invalid login.");
     }
-  </script>
+  }
+
+  function register() {
+    const email = document.getElementById("register-email").value;
+    const password = document.getElementById("register-password").value;
+    if (!email || !password) return alert("Fill all fields");
+    if (users[email]) return alert("Account already exists.");
+    users[email] = password;
+    balances[email] = 0;
+    adViews[email] = { count: 0, date: new Date().toLocaleDateString() };
+    logs[email] = [];
+    withdrawals[email] = null;
+
+    localStorage.setItem("users", JSON.stringify(users));
+    localStorage.setItem("balances", JSON.stringify(balances));
+    localStorage.setItem("adViews", JSON.stringify(adViews));
+    localStorage.setItem("logs", JSON.stringify(logs));
+    localStorage.setItem("withdrawals", JSON.stringify(withdrawals));
+    alert("Account created! Please log in.");
+    showLogin();
+  }
+
+  function logout() {
+    localStorage.removeItem("currentUser");
+    currentUser = null;
+    showLogin();
+  }
+
+  function recoverPassword() {
+    const email = prompt("Enter your registered email:");
+    if (users[email]) {
+      alert(`Your password is: ${users[email]}`);
+    } else {
+      alert("No account with that email.");
+    }
+  }
+
+  function showLogin() {
+    document.getElementById('login-box').style.display = 'flex';
+    document.getElementById('register-box').style.display = 'none';
+    document.getElementById('dashboard').style.display = 'none';
+  }
+
+  function showRegister() {
+    document.getElementById('login-box').style.display = 'none';
+    document.getElementById('register-box').style.display = 'flex';
+    document.getElementById('dashboard').style.display = 'none';
+  }
+
+  function showDashboard() {
+    document.getElementById('login-box').style.display = 'none';
+    document.getElementById('register-box').style.display = 'none';
+    document.getElementById('dashboard').style.display = 'flex';
+    resetDailyAdViews();
+    updateDashboard();
+  }
+
+  if (currentUser) {
+    showDashboard();
+  } else {
+    showLogin();
+  }
+</script>
 
 </body>
 </html>
