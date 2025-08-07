@@ -1,86 +1,29 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
+  <meta charset="UTF-8">
   <title>70/30 Earnings</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <style>
-    body {
-      font-family: Arial, sans-serif;
-      padding: 20px;
-      background: #f2f2f2;
-    }
-    input, button {
-      margin: 10px 0;
-      padding: 10px;
-      font-size: 16px;
-      width: 100%;
-      max-width: 300px;
-    }
-    iframe {
-      width: 100%;
-      height: 500px;
-      border: 1px solid #ccc;
-      margin-bottom: 20px;
-    }
-    #logout-container {
-      position: absolute;
-      top: 10px;
-      right: 10px;
-    }
-  </style>
 </head>
 <body>
-  <div id="logout-container">
-    <button onclick="logout()">Logout</button>
-  </div>
-
   <h1>🔐 70/30 Earnings</h1>
+  <input type="email" id="email" placeholder="Email" required><br>
+  <input type="password" id="password" placeholder="Password" required><br>
+  <button onclick="login()">Login</button>
+  <button onclick="createAccount()">Create Account</button><br>
+  <button onclick="forgotPassword()">Forgot Password</button>
+  <div id="message" style="margin-top: 10px; color: black;"></div>
 
-  <div id="auth-section">
-    <input type="email" id="email" placeholder="Email" required><br>
-    <input type="password" id="password" placeholder="Password" required><br>
-    <button onclick="login()">Login</button>
-    <button onclick="createAccount()">Create Account</button><br>
-    <button onclick="forgotPassword()">Forgot Password</button>
+  <div id="logout-container" style="position: fixed; top: 10px; right: 10px; z-index: 100;">
+    <button onclick="logout()" style="padding: 10px 20px; font-size: 16px;">Logout</button>
   </div>
-
-  <div id="dashboard" style="display:none;">
-    <h2>💰 Balance: <span id="balance">$0.00</span></h2>
-
-    <h2>📋 CPX Research Offerwall</h2>
-    <iframe id="cpx-iframe"></iframe>
-
-    <h2>🎁 AdGem Offerwall</h2>
-    <iframe id="adgem-iframe"></iframe>
-  </div>
-
-  <div id="message"></div>
 
   <script>
     const backendURL = "https://seven030app-backend.onrender.com";
-    const emailInput = document.getElementById("email");
-    const passwordInput = document.getElementById("password");
-    const messageDiv = document.getElementById("message");
-
-    function setMessage(msg) {
-      messageDiv.innerText = msg;
-    }
-
-    function showDashboard(email) {
-      document.getElementById("auth-section").style.display = "none";
-      document.getElementById("dashboard").style.display = "block";
-
-      // Set iframe URLs
-      document.getElementById("cpx-iframe").src = `https://offers.cpx-research.com/index.php?app_id=28541&ext_user_id=${email}&secure_hash=qTNDcrRbH2XGbK4oT1QvWODM21PiXGMf`;
-      document.getElementById("adgem-iframe").src = `https://api.adgem.com/v1/wall?appid=30896&playerid=${email}&subid=${email}&gid=1`;
-
-      refreshBalance(email);
-    }
 
     async function login() {
-      const email = emailInput.value;
-      const password = passwordInput.value;
-
+      const email = document.getElementById("email").value.trim();
+      const password = document.getElementById("password").value;
       const res = await fetch(`${backendURL}/login`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -88,63 +31,54 @@
       });
 
       const data = await res.json();
-      setMessage(data.message);
+      document.getElementById("message").textContent = data.message || "Login complete.";
 
-      if (data.success) {
-        localStorage.setItem("userEmail", email);
-        showDashboard(email);
+      if (res.ok) {
+        localStorage.setItem("user", email);
+        location.reload();
       }
     }
 
     async function createAccount() {
-      const email = emailInput.value;
-      const password = passwordInput.value;
-
-      const res = await fetch(`${backendURL}/create_account`, {
+      const email = document.getElementById("email").value.trim();
+      const password = document.getElementById("password").value;
+      const res = await fetch(`${backendURL}/create`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, password })
       });
 
       const data = await res.json();
-      setMessage(data.message);
+      document.getElementById("message").textContent = data.message || "Account created.";
 
-      if (data.success) {
-        localStorage.setItem("userEmail", email);
-        showDashboard(email);
+      if (res.ok) {
+        localStorage.setItem("user", email);
+        location.reload();
       }
     }
 
     async function forgotPassword() {
-      const email = emailInput.value;
-      const res = await fetch(`${backendURL}/forgot_password`, {
+      const email = document.getElementById("email").value.trim();
+      const res = await fetch(`${backendURL}/forgot`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email })
       });
 
       const data = await res.json();
-      setMessage(data.message);
+      document.getElementById("message").textContent = data.message || "Password reset email sent.";
     }
 
     function logout() {
-      localStorage.removeItem("userEmail");
+      localStorage.removeItem("user");
       location.reload();
     }
 
-    async function refreshBalance(email) {
-      const res = await fetch(`${backendURL}/balance?user=${email}`);
-      const data = await res.json();
-      document.getElementById("balance").innerText = `$${parseFloat(data.balance).toFixed(2)}`;
+    // Auto-fill email if remembered
+    const savedEmail = localStorage.getItem("user");
+    if (savedEmail) {
+      document.getElementById("email").value = savedEmail;
     }
-
-    // Auto-login if session exists
-    window.onload = () => {
-      const savedEmail = localStorage.getItem("userEmail");
-      if (savedEmail) {
-        showDashboard(savedEmail);
-      }
-    };
   </script>
 </body>
 </html>
