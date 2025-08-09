@@ -253,3 +253,37 @@ async def cpx_link(user=Depends(get_user)):
 @app.get("/")
 def root():
     return {"ok": True, "service": "7030 backend"}
+At line:1 char:125
++ ... ^@app\.get\("/api/cpx/link"'} | Set-Content $pecho. @app.get(/api/cpx ...
++                                                                  ~
+Missing ')' in method call.
+At line:1 char:138
++ ... api/cpx/link"'} | Set-Content $pecho. @app.get(/api/cpx/link) async d ...
++                                                                 ~
+Unexpected token ')' in expression or statement.
+At line:1 char:250
++ ... ser_id = user[email] digest = hmac.new(CPX_SECURE_KEY.encode(), ext_u ...
++                                                                  ~
+An expression was expected after '('.
+At line:1 char:272
++ ... igest = hmac.new(CPX_SECURE_KEY.encode(), ext_user_id.encode(), hashl ...
++                                                                  ~
+An expression was expected after '('.
+At line:1 char:372
++ ... tps://offers.cpx-research.com/index.php?app_id={CPX_APP_ID}^&ext_user ...
++                                                                 ~
+The ampersand (&) character is not allowed. The & operator is reserved for future use; wrap an ampersand in double quotation 
+marks ("&") to pass it as part of a string.
+At line:1 char:399
++ ... om/index.php?app_id={CPX_APP_ID}^&ext_user_id={ext_user_id}^&secure_h ...
++                                                                 ~
+The ampersand (&) character is not allowed. The & operator is reserved for future use; wrap an ampersand in double quotation 
+marks ("&") to pass it as part of a string.
+At line:1 char:116
++ ... tch '^@app\.get\("/api/cpx/link"'} | Set-Content $pecho. @app.get(/ap ...
++                                                              ~~~~
+The splatting operator '@' cannot be used to reference variables in an expression. '@app' can be used only as an argument to a 
+command. To reference variables in an expression use '$app'.
+    + CategoryInfo          : ParserError: (:) [], ParentContainsErrorRecordException
+    + FullyQualifiedErrorId : MissingEndParenthesisInMethodCall
+ 
