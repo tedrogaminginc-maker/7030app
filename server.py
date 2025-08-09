@@ -241,3 +241,14 @@ async def admin_user(email: EmailStr, auth=Depends(get_claims)):
 def root():
     return {"ok": True, "service": "7030 backend"}
  @app.get("/api/cpx/link") async def cpx_link(user=Depends(get_user)):     ext_user_id = user["email"]     digest = hmac.new(CPX_SECURE_KEY.encode(), ext_user_id.encode(), hashlib.sha256).hexdigest()     url = f"https://offers.cpx-research.com/index.php?app_id={CPX_APP_ID}^^&ext_user_id={ext_user_id}^^&secure_hash={digest}"     return {"url": url}
+
+@app.get("/api/cpx/link")
+async def cpx_link(user=Depends(get_user)):
+    ext_user_id = user["email"]
+    digest = hmac.new(CPX_SECURE_KEY.encode(), ext_user_id.encode(), hashlib.sha256).hexdigest()
+    url = f"https://offers.cpx-research.com/index.php?app_id={CPX_APP_ID}^^&ext_user_id={ext_user_id}^^&secure_hash={digest}"
+    return {"url": url}
+
+@app.get("/")
+def root():
+    return {"ok": True, "service": "7030 backend"}
