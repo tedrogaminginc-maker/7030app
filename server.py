@@ -1,4 +1,3 @@
-powershell -Command "@'
 import os, time, smtplib, hmac, hashlib, jwt, aiosqlite
 from email.message import EmailMessage
 from fastapi import FastAPI, HTTPException, Depends, Header
@@ -28,7 +27,7 @@ app = FastAPI(title='7030 Backend')
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=['*'],  # APK uses file:// so allow all
+    allow_origins=['*'],
     allow_credentials=True,
     allow_methods=['*'],
     allow_headers=['*'],
@@ -145,7 +144,7 @@ async def logout():
 
 @app.post('/api/auth/reset/request')
 async def reset_request(email: EmailStr):
-    code = str(int(time.time()))[-6:]  # simple 6-digit
+    code = str(int(time.time()))[-6:]
     async with aiosqlite.connect(DB) as db:
         await db.execute(
             'INSERT OR REPLACE INTO resets(email, code, ts) VALUES (?,?,?)',
@@ -269,4 +268,3 @@ async def admin_user(email: EmailStr, auth=Depends(get_claims)):
 @app.get('/')
 def root():
     return {'ok': True, 'service': '7030 backend'}
-'@ | Set-Content -Encoding UTF8 server.py"
