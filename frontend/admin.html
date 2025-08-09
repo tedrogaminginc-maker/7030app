@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Admin • 70/30</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="stylesheet" href="./style.css" />
+</head>
+<body>
+  <div class="admin-wrap">
+    <h1>Admin Panel</h1>
+    <div class="card">
+      <p>Server metrics, balances, and user management.</p>
+      <div class="row">
+        <input id="admin-email" type="email" placeholder="Admin email" />
+        <input id="admin-password" type="password" placeholder="Admin password" />
+        <button id="admin-login">Login</button>
+      </div>
+      <div id="admin-msg" class="msg"></div>
+    </div>
+
+    <div id="admin-content" class="hidden">
+      <div class="card">
+        <h3>Overview</h3>
+        <div class="grid tight">
+          <div class="stat">Users: <span id="stat-users">0</span></div>
+          <div class="stat">Total Paid: $<span id="stat-paid">0.00</span></div>
+          <div class="stat">Ad Views Today: <span id="stat-views-today">0</span></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>User Lookup</h3>
+        <div class="row">
+          <input id="lookup-email" type="email" placeholder="user@example.com" />
+          <button id="lookup-btn">Lookup</button>
+        </div>
+        <pre id="lookup-json" class="pre"></pre>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    window.APP_CONFIG = {
+      BACKEND_BASE: "https://seven030app-backend.onrender.com"
+    };
+  </script>
+  <script src="./admin.js"></script>
+</body>
+</html>

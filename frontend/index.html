@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>70/30 Watch & Earn</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="manifest" href="./manifest.json" />
+  <link rel="stylesheet" href="./style.css" />
+</head>
+<body>
+  <div id="app">
+    <!-- Auth Panels -->
+    <section id="auth-panel">
+      <h1>70/30 Watch & Earn</h1>
+
+      <div class="card" id="login-card">
+        <h2>Login</h2>
+        <input id="login-email" type="email" placeholder="Email" autocomplete="email" />
+        <input id="login-password" type="password" placeholder="Password" autocomplete="current-password" />
+        <label class="remember">
+          <input id="remember-me" type="checkbox" checked /> Remember me
+        </label>
+        <button id="login-btn">Login</button>
+        <button id="goto-create">Create Account</button>
+        <button id="goto-forgot">Forgot Password</button>
+        <div id="login-msg" class="msg"></div>
+      </div>
+
+      <div class="card hidden" id="create-card">
+        <h2>Create Account</h2>
+        <input id="create-email" type="email" placeholder="Email" />
+        <input id="create-password" type="password" placeholder="Password (min 8)" />
+        <button id="create-btn">Create</button>
+        <button class="link" id="back-to-login-1">Back</button>
+        <div id="create-msg" class="msg"></div>
+      </div>
+
+      <div class="card hidden" id="forgot-card">
+        <h2>Reset Password</h2>
+        <input id="forgot-email" type="email" placeholder="Email" />
+        <button id="forgot-send">Send 6-digit Code</button>
+
+        <div id="verify-block" class="hidden">
+          <input id="forgot-code" type="text" placeholder="Code" />
+          <input id="forgot-newpass" type="password" placeholder="New Password" />
+          <button id="forgot-verify">Reset</button>
+        </div>
+        <button class="link" id="back-to-login-2">Back</button>
+        <div id="forgot-msg" class="msg"></div>
+      </div>
+    </section>
+
+    <!-- App Panel -->
+    <section id="app-panel" class="hidden">
+      <header class="topbar">
+        <div>
+          <div id="user-email" class="chip"></div>
+          <div class="chip">Balance: $<span id="user-balance">0.00</span></div>
+          <div class="chip">Views today: <span id="views-today">0</span>/30</div>
+        </div>
+        <div>
+          <button id="btn-admin" class="ghost">Admin</button>
+          <button id="btn-logout" class="danger">Logout</button>
+        </div>
+      </header>
+
+      <main class="grid">
+        <div class="card">
+          <h3>Watch Ad (pays $0.01 total)</h3>
+          <p>You keep 70% ($0.007) — limit 30 per day.</p>
+          <button id="btn-watch">Watch Ad</button>
+          <div id="watch-msg" class="msg"></div>
+        </div>
+
+        <div class="card">
+          <h3>CPX Research</h3>
+          <p>Open surveys in-app. Unlimited.</p>
+          <button id="btn-cpx">Open CPX</button>
+          <div id="cpx-msg" class="msg"></div>
+        </div>
+
+        <div class="card">
+          <h3>AdGem Offerwall</h3>
+          <p>Open offers in-app. Unlimited.</p>
+          <button id="btn-adgem">Open AdGem</button>
+          <div id="adgem-msg" class="msg"></div>
+        </div>
+      </main>
+    </section>
+  </div>
+
+  <script>
+    window.APP_CONFIG = {
+      BACKEND_BASE: "https://seven030app-backend.onrender.com",
+      CPX_APP_ID: "28541"
+    };
+  </script>
+  <script src="./app.js"></script>
+</body>
+</html>
