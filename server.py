@@ -392,3 +392,13 @@ def _mount_wallet():
             return {"mounted": False, "error": f"include failed: {e2}"}
     except Exception as e:
         return {"mounted": False, "error": f"import failed: {e}"}
+print("===BOOT MARKER A===")
+try:
+    import cpx_wallet as _cw
+    try:
+        app.include_router(_cw.router)
+        print("===WALLET ROUTER MOUNTED===")
+    except Exception as e2:
+        print("===WALLET MOUNT ERROR===", e2)
+except Exception as e:
+    print("===WALLET IMPORT ERROR===", e)
