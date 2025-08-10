@@ -1095,3 +1095,18 @@ def _dbg_mint_jwt(email: str):
     return {"token": token}
 app.add_api_route("/api/_dbg/mint_jwt", _dbg_mint_jwt, methods=["GET"])
 # === END DBG ===
+# === DBG: mint JWT for testing ===
+import jwt, time, os
+def _dbg_mint_jwt(email: str):
+    # reuse same secret the server uses
+    secret = globals().get("JWT_SECRET") or os.getenv("JWT_SECRET","change-me")
+    now = int(time.time())
+    # uid via the same _uid(email) helper already defined above
+    uid = _uid(email)
+    payload = {"sub": str(uid), "email": email, "exp": now + 3600}
+    token = jwt.encode(payload, secret, algorithm="HS256")
+    return {"token": token, "email": email, "user_id": uid, "exp_in_sec": 3600}
+
+app.add_api_route("/api/_dbg/mint_jwt", _dbg_mint_jwt, methods=["GET"])
+print("===DBG mint_jwt mounted===")
+# === END DBG ===
