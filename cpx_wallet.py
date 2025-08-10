@@ -4,55 +4,33 @@ import os, json
 from typing import List
 
 from fastapi import APIRouter, Request, HTTPException, Query
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from sqlalchemy import create_engine, text
 from sqlalchemy.exc import IntegrityError
 
-# === DB RESOLUTION START ===
-# Try to use the same DB file as server.py so we see the same 'users' table.
-DB_FILE = os.getenv("DB", "")
-try:
-    from server import DB as _SERVER_DB  # server.py uses aiosqlite.connect(DB)
-    if isinstance(_SERVER_DB, str) and _SERVER_DB:
-        DB_FILE = _SERVER_DB
-except Exception:
-    pass
-
-# Also respect DATABASE_URL if provided (Postgres later)
-DATABASE_URL = os.getenv("DATABASE_URL", "")
-
-# Normalize into SQLAlchemy URL
-if not DATABASE_URL:
-    if not DB_FILE:
-        DB_FILE = "./app.db"
-    # Support SQLite URI or plain path
-    if DB_FILE.startswith("sqlite:///"):
-        DATABASE_URL = DB_FILE
-    else:
-        DATABASE_URL = f"sqlite:///{DB_FILE}"
-# === DB RESOLUTION END ===
-CPX_SECURE_HASH = os.getenv("CPX_SECURE_HASH", "")  # optional
-
 # --- Resolve DB to match server.py ---
 DB_FILE = os.getenv("DB", "")
 try:
-    from server import DB as _SERVER_DB  # server.py uses aiosqlite.connect(DB)
+    # server.py defines DB used by aiosqlite.connect(DB)
+    from server import DB as _SERVER_DB
     if isinstance(_SERVER_DB, str) and _SERVER_DB:
         DB_FILE = _SERVER_DB
 except Exception:
     pass
 
-_env_url = os.getenv("DATABASE_URL", "")
-if _env_url:
-    DATABASE_URL = _env_url
+env_url = os.getenv("DATABASE_URL", "")
+if env_url:
+    DATABASE_URL = env_url
 else:
     if not DB_FILE:
-        DB_FILE = "./app.db"
+        DB_FILE = "db.sqlite"
     DATABASE_URL = DB_FILE if DB_FILE.startswith("sqlite:///") else f"sqlite:///{DB_FILE}"
+
+CPX_SECURE_HASH = os.getenv("CPX_SECURE_HASH", "")  # optional for now
 
 engine = create_engine(DATABASE_URL, future=True)
 router = APIRouter(prefix="/api", tags=["wallet"])
-
 # ---- schema: create tables explicitly ----
 with engine.begin() as conn:
     conn.execute(text("""
@@ -75,7 +53,7 @@ CREATE TABLE IF NOT EXISTS wallet_balances (
   balance_cents INTEGER NOT NULL DEFAULT 0
 )
 """))
-# ---- helpers ----
+
 def _ensure_wallet(conn, user_id:int) -> None:
     conn.execute(text("""
 CREATE TABLE IF NOT EXISTS wallet_balances (
@@ -107,20 +85,8 @@ def _add_balance(conn, user_id:int, add_cents:int) -> None:
         text("UPDATE wallet_balances SET balance_cents = balance_cents + :a WHERE user_id=:u"),
         {"a": add_cents, "u": user_id}
     )
-class TxOut(BaseModel):
-    id:int
-    source:str
-    external_id:str
-    gross_cents:int
-    net_cents:int
-    status:str
-    created_at:str
-
-class WalletOut(BaseModel):
-    balance_cents:int
-    recent:List[TxOut]
-
-@router.get("/wallet", response_model=WalletOut)
+# Plain JSON to avoid model validation surprises
+@router.get("/wallet")
 def wallet(email: str = Query(..., description="User email for lookup")):
     with engine.begin() as conn:
         u = _get_user_by_email(conn, email)
@@ -135,12 +101,31 @@ def wallet(email: str = Query(..., description="User email for lookup")):
           ORDER BY id DESC
           LIMIT 50
         """), {"u": u.id}).all()
-    recent = [TxOut(
-        id=r.id, source=r.source, external_id=r.external_id,
-        gross_cents=r.gross_cents, net_cents=r.net_cents,
-        status=r.status, created_at=r.created_at
-    ) for r in rows]
-    return WalletOut(balance_cents=bal, recent=recent)
+        recent = [{
+            "id": r.id, "source": r.source, "external_id": r.external_id,
+            "gross_cents": r.gross_cents, "net_cents": r.net_cents,
+            "status": r.status, "created_at": r.created_at
+        } for r in rows]
+    return {"balance_cents": int(bal), "recent": recent}
+
+@router.get("/wallet/debug")
+def wallet_debug():
+    info = {"DATABASE_URL": DATABASE_URL}
+    try:
+        if DATABASE_URL.startswith("sqlite:///"):
+            info["sqlite_file"] = DATABASE_URL.replace("sqlite:///","")
+        with engine.begin() as conn:
+            names = conn.execute(text("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name")).all()
+            info["tables"] = [n[0] for n in names]
+            if "users" in info["tables"]:
+                info["users_count"] = int(conn.execute(text("SELECT COUNT(1) FROM users")).scalar() or 0)
+            if "wallet_balances" in info["tables"]:
+                info["wallet_count"] = int(conn.execute(text("SELECT COUNT(1) FROM wallet_balances")).scalar() or 0)
+            if "transactions" in info["tables"]:
+                info["tx_count"] = int(conn.execute(text("SELECT COUNT(1) FROM transactions")).scalar() or 0)
+    except Exception as e:
+        info["error"] = str(e)
+    return info
 @router.api_route("/cpx/webhook", methods=["GET","POST"])
 async def cpx_webhook(request: Request):
     # Parse input
@@ -153,21 +138,21 @@ async def cpx_webhook(request: Request):
             form = await request.form()
             data = dict(form)
 
-    # optional signature (defense-in-depth)
-    incoming_hash = (data.get("secure_hash") or data.get("hash") or "").strip()
-    if CPX_SECURE_HASH and incoming_hash and incoming_hash != CPX_SECURE_HASH:
-        raise HTTPException(status_code=401, detail="Bad signature")
-
     ext_user_id = (data.get("ext_user_id") or data.get("user") or data.get("subid") or "").strip()
     txid = (data.get("txid") or data.get("clickid") or data.get("transaction_id") or "").strip()
     status = (data.get("status") or "").lower().strip()
     amount_raw = (data.get("amount") or "").strip()
     reward_raw = (data.get("reward") or "").strip()
+    incoming_hash = (data.get("secure_hash") or data.get("hash") or "").strip()
 
     if not ext_user_id or not txid:
-        raise HTTPException(status_code=400, detail="Missing ext_user_id or txid")
+        return JSONResponse({"error":"Missing ext_user_id or txid"}, status_code=400)
 
-    # dollars->cents or fallback
+    # Optional signature for now (we can require it after you set CPX_SECURE_HASH in env)
+    if CPX_SECURE_HASH and incoming_hash and incoming_hash != CPX_SECURE_HASH:
+        return JSONResponse({"error":"Bad signature"}, status_code=401)
+
+    # dollars->cents or raw cents fallback
     gross_cents = 0
     try:
         if amount_raw:
@@ -187,7 +172,7 @@ async def cpx_webhook(request: Request):
     with engine.begin() as conn:
         u = _get_user_by_email(conn, ext_user_id)
         if not u:
-            # record ignored row for traceability
+            # track ignored for observability
             try:
                 conn.execute(text("""
                   INSERT INTO transactions (user_id, source, external_id, gross_cents, net_cents, status, meta, created_at)
@@ -196,10 +181,11 @@ async def cpx_webhook(request: Request):
                        "st": "ignored", "m": meta_json, "ts": created_at})
             except Exception:
                 pass
-            raise HTTPException(status_code=202, detail="User not found; stored ignored")
+            return JSONResponse({"ok": True, "credited": False, "reason":"user_not_found"}, status_code=202)
 
         _ensure_wallet(conn, u.id)
-        # dedupe
+
+        # Dedupe by (source, external_id)
         try:
             conn.execute(text("""
               INSERT INTO transactions (user_id, source, external_id, gross_cents, net_cents, status, meta, created_at)
@@ -214,120 +200,3 @@ async def cpx_webhook(request: Request):
             _add_balance(conn, u.id, net_cents)
 
     return {"ok": True, "credited": will_credit, "gross_cents": gross_cents, "net_cents": net_cents}
-
-@router.get("/wallet/debug")
-def wallet_debug():
-    info = {}
-    info["DATABASE_URL"] = DATABASE_URL
-    try:
-        # Try to show sqlite file path when using sqlite
-        if DATABASE_URL.startswith("sqlite:///"):
-            info["sqlite_file"] = DATABASE_URL.replace("sqlite:///","")
-    except Exception:
-        pass
-    # List tables
-    try:
-        with engine.begin() as conn:
-            tables = conn.execute(text("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name")).all()
-            info["tables"] = [t[0] for t in tables]
-            # If users exists, show a sample row count
-            if "users" in info["tables"]:
-                n = conn.execute(text("SELECT COUNT(1) FROM users")).scalar()
-                info["users_count"] = int(n)
-    except Exception as e:
-        info["db_error"] = str(e)
-    return info
-@router.get("/wallet/debug")
-def wallet_debug():
-    info = {"ok": True}
-    try:
-        info["DATABASE_URL"] = DATABASE_URL
-        if DATABASE_URL.startswith("sqlite:///"):
-            info["sqlite_file"] = DATABASE_URL.replace("sqlite:///","")
-        with engine.begin() as conn:
-            rows = conn.execute(text("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name")).all()
-            info["tables"] = [r[0] for r in rows]
-            if "users" in info["tables"]:
-                info["users_count"] = int(conn.execute(text("SELECT COUNT(1) FROM users")).scalar() or 0)
-            if "wallet_balances" in info["tables"]:
-                info["wallet_count"] = int(conn.execute(text("SELECT COUNT(1) FROM wallet_balances")).scalar() or 0)
-            if "transactions" in info["tables"]:
-                info["tx_count"] = int(conn.execute(text("SELECT COUNT(1) FROM transactions")).scalar() or 0)
-    except Exception as e:
-        info["ok"] = False
-        info["error"] = str(e)
-    return info
-
-from fastapi.responses import JSONResponse
-
-@router.get("/wallet_raw")
-def wallet_raw(email: str):
-    try:
-        with engine.begin() as conn:
-            u = _get_user_by_email(conn, email)
-            if not u:
-                return JSONResponse({"error":"User not found","email":email}, status_code=404)
-            _ensure_wallet(conn, u.id)
-            bal = _get_balance(conn, u.id)
-            rows = conn.execute(text("""
-              SELECT id, source, external_id, gross_cents, net_cents, status, created_at
-              FROM transactions WHERE user_id=:u ORDER BY id DESC LIMIT 50
-            """), {"u": u.id}).all()
-            recent = [{
-                "id": r.id, "source": r.source, "external_id": r.external_id,
-                "gross_cents": r.gross_cents, "net_cents": r.net_cents,
-                "status": r.status, "created_at": r.created_at
-            } for r in rows]
-        return {"balance_cents": int(bal), "recent": recent}
-    except Exception as e:
-        # surface the exact error so we can see it in logs and the response
-        return JSONResponse({"error": str(e)}, status_code=500)
-from fastapi.responses import JSONResponse
-
-@router.get("/wallet_plain")
-def wallet_plain(email: str):
-    try:
-        with engine.begin() as conn:
-            u = _get_user_by_email(conn, email)
-            if not u:
-                return JSONResponse({"error":"User not found","email":email}, status_code=404)
-            _ensure_wallet(conn, u.id)
-            bal = _get_balance(conn, u.id)
-            rows = conn.execute(text("
-              SELECT id, source, external_id, gross_cents, net_cents, status, created_at
-              FROM transactions WHERE user_id=:u ORDER BY id DESC LIMIT 50
-            "), {"u": u.id}).all()
-            recent = [{
-                "id": r.id, "source": r.source, "external_id": r.external_id,
-                "gross_cents": r.gross_cents, "net_cents": r.net_cents,
-                "status": r.status, "created_at": r.created_at
-            } for r in rows]
-        return {"balance_cents": int(bal), "recent": recent}
-    except Exception as e:
-        return JSONResponse({"error": str(e)}, status_code=500)
-from fastapi.responses import JSONResponse
-
-@router.get("/wallet_plain2")
-def wallet_plain2(email: str):
-    try:
-        with engine.begin() as conn:
-            u = _get_user_by_email(conn, email)
-            if not u:
-                return JSONResponse({"error":"User not found","email":email}, status_code=404)
-            _ensure_wallet(conn, u.id)
-            bal = _get_balance(conn, u.id)
-            rows = conn.execute(text("""
-              SELECT id, source, external_id, gross_cents, net_cents, status, created_at
-              FROM transactions
-              WHERE user_id=:u
-              ORDER BY id DESC
-              LIMIT 50
-            """), {"u": u.id}).all()
-            recent = [{
-                "id": r.id, "source": r.source, "external_id": r.external_id,
-                "gross_cents": r.gross_cents, "net_cents": r.net_cents,
-                "status": r.status, "created_at": r.created_at
-            } for r in rows]
-        return {"balance_cents": int(bal), "recent": recent}
-    except Exception as e:
-        return JSONResponse({"error": str(e)}, status_code=500)
