@@ -1,6 +1,8 @@
-﻿import os, time, smtplib, hmac, hashlib, jwt, aiosqlite
+﻿import cpx
+# ...import os, time, smtplib, hmac, hashlib, jwt, aiosqlite
 from email.message import EmailMessage
 from fastapi import FastAPI, HTTPException, Depends, Header
+import cpx
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, EmailStr
 from passlib.hash import bcrypt
@@ -294,4 +296,8 @@ def _root():
 @app.get('/index.html', include_in_schema=False)
 def _index():
     return FileResponse('index.html')
+
+
+# Mount CPX/wallet routes
+app.include_router(cpx.router)
 
