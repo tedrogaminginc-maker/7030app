@@ -1380,3 +1380,113 @@ try:
 except Exception as e:
     print("===CPX WEBHOOK5 ERROR===", e)
 # === END CPX webhook5 ===
+# === CPX webhook6 (accepts CPX params + ?hash={secure_hash}) ===
+try:
+    from fastapi import Request
+    import os
+    from sqlalchemy import create_engine, text
+    from datetime import datetime
+    from zlib import crc32
+
+    _DB = globals().get("DB", "db.sqlite")
+    _DATABASE_URL = os.getenv("DATABASE_URL") or (_DB if str(_DB).startswith("sqlite:///") else f"sqlite:///{_DB}")
+    _eng = create_engine(_DATABASE_URL, future=True)
+
+    def _uid(email: str) -> int:
+        return int(crc32(email.encode("utf-8")) & 0xffffffff)
+
+    async def cpx_webhook6(request: Request):
+        # Validate secret via query (?hash or ?secure_hash)
+        q = dict(request.query_params)
+        body = {}
+        try:
+            body = await request.json()
+        except Exception:
+            pass
+
+        required = os.getenv("CPX_SECURE_HASH", "")
+        provided = (q.get("hash") or q.get("secure_hash") or "").strip()
+        if required and provided != required:
+            return {"ok": False, "reason": "bad_secret"}
+
+        # Map CPX fields → ours
+        email  = (q.get("user_id") or body.get("user_id") or
+                  q.get("ext_user_id") or body.get("ext_user_id") or "").strip()
+        txid   = (q.get("trans_id") or body.get("trans_id") or
+                  q.get("txid") or body.get("txid") or "").strip()
+        status_raw = (q.get("status") or body.get("status") or "").strip().lower()
+
+        # Amount precedence: amount_local → amount_usd → amount
+        amount_str = (q.get("amount_local") or body.get("amount_local") or
+                      q.get("amount_usd")   or body.get("amount_usd")   or
+                      q.get("amount")       or body.get("amount")       or "0")
+        try:
+            gross_cents = int(round(float(amount_str) * 100))
+        except Exception:
+            gross_cents = 0
+
+        # Net vs gross handling
+        AMOUNTS_ARE_NET = os.getenv("CPX_AMOUNTS_ARE_NET", "0").lower() in ("1","true","yes")
+        TAKE_RATE       = float(os.getenv("CPX_TAKE_RATE", "0.70"))
+        net_cents       = gross_cents if AMOUNTS_ARE_NET else int(round(gross_cents * TAKE_RATE))
+
+        # Interpret status: 2/reversed → reverse; 1/pending → pending; else → approved
+        st = status_raw
+        if st in ("2","reversed"):
+            new_status = "reversed"
+            will_credit = False
+        elif st in ("1","pending"):
+            new_status = "pending"
+            will_credit = False
+        else:
+            new_status = "credited" if net_cents > 0 else "ignored"
+            will_credit = (net_cents > 0)
+
+        if not email or not txid:
+            return {"ok": False, "reason": "missing_fields"}
+
+        uid = _uid(email)
+        ts = datetime.utcnow().isoformat()
+
+        with _eng.begin() as conn:
+            # Ensure balance row
+            conn.execute(text("INSERT INTO wallet_balances (user_id, balance_cents) VALUES (:u, 0) "
+                              "ON CONFLICT(user_id) DO NOTHING"), {"u": uid})
+
+            # Check existing tx
+            existing = conn.execute(text("""
+                SELECT status, net_cents FROM transactions
+                WHERE source='cpx' AND external_id=:tx
+            """), {"tx": txid}).first()
+
+            if existing:
+                prev_status, prev_net = existing[0], int(existing[1])
+                if new_status == "reversed" and prev_status != "reversed":
+                    # mark reversed and subtract once
+                    conn.execute(text("""
+                        UPDATE transactions SET status='reversed' WHERE source='cpx' AND external_id=:tx
+                    """), {"tx": txid})
+                    conn.execute(text("UPDATE wallet_balances SET balance_cents = balance_cents - :a WHERE user_id=:u"),
+                                 {"a": prev_net, "u": uid})
+                    return {"ok": True, "reversed": True, "net_cents": prev_net, "email": email}
+                # otherwise ignore duplicate
+                return {"ok": True, "deduped": True, "status": prev_status}
+
+            # Insert new tx
+            conn.execute(text("""
+              INSERT INTO transactions (user_id, source, external_id, gross_cents, net_cents, status, meta, created_at)
+              VALUES (:u, 'cpx', :tx, :g, :n, :st, NULL, :ts)
+            """), {"u": uid, "tx": txid, "g": gross_cents, "n": net_cents, "st": new_status, "ts": ts})
+
+            if will_credit:
+                conn.execute(text("UPDATE wallet_balances SET balance_cents = balance_cents + :a WHERE user_id=:u"),
+                             {"a": net_cents, "u": uid})
+
+        return {"ok": True, "email": email, "net_mode": AMOUNTS_ARE_NET, "status": new_status,
+                "gross_cents": gross_cents, "net_cents": net_cents}
+
+    app.add_api_route("/api/cpx/webhook6", cpx_webhook6, methods=["GET","POST"])
+    print("===CPX WEBHOOK6 READY===")
+except Exception as e:
+    print("===CPX WEBHOOK6 ERROR===", e)
+# === END CPX webhook6 ===
