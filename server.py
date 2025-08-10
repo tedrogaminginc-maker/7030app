@@ -31,6 +31,33 @@ DB = 'db.sqlite'
 
 app = FastAPI(title='7030 Backend')
 
+
+@app.get('/api/db/debug')
+def _db_debug():
+    import sqlite3, json
+    info = {}
+    try:
+        # expose DB value from this module if present
+        try:
+            from server import DB as _DB
+        except Exception:
+            _DB = None
+        info['DB'] = _DB
+        if _DB:
+            try:
+                conn = sqlite3.connect(_DB)
+                cur = conn.cursor()
+                cur.execute("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name")
+                info['tables'] = [r[0] for r in cur.fetchall()]
+                if 'users' in info.get('tables', []):
+                    cur.execute("SELECT COUNT(1) FROM users")
+                    info['users_count'] = cur.fetchone()[0]
+                conn.close()
+            except Exception as e:
+                info['sqlite_error'] = str(e)
+    except Exception as e:
+        info['error'] = str(e)
+    return info
 app.add_middleware(
     CORSMiddleware,
         allow_origins=[
@@ -332,3 +359,4 @@ def db_debug():
         info["error"] = str(e)
     return info
 app.include_router(dbdebug)
+
