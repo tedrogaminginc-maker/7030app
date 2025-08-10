@@ -32,7 +32,23 @@ if not DATABASE_URL:
         DATABASE_URL = f"sqlite:///{DB_FILE}"
 # === DB RESOLUTION END ===
 CPX_SECURE_HASH = os.getenv("CPX_SECURE_HASH", "")  # optional
-DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./app.db")
+
+# --- Resolve DB to match server.py ---
+DB_FILE = os.getenv("DB", "")
+try:
+    from server import DB as _SERVER_DB  # server.py uses aiosqlite.connect(DB)
+    if isinstance(_SERVER_DB, str) and _SERVER_DB:
+        DB_FILE = _SERVER_DB
+except Exception:
+    pass
+
+_env_url = os.getenv("DATABASE_URL", "")
+if _env_url:
+    DATABASE_URL = _env_url
+else:
+    if not DB_FILE:
+        DB_FILE = "./app.db"
+    DATABASE_URL = DB_FILE if DB_FILE.startswith("sqlite:///") else f"sqlite:///{DB_FILE}"
 
 engine = create_engine(DATABASE_URL, future=True)
 router = APIRouter(prefix="/api", tags=["wallet"])
@@ -241,3 +257,4 @@ def wallet_debug():
         info["ok"] = False
         info["error"] = str(e)
     return info
+
