@@ -38,13 +38,17 @@ with engine.begin() as conn:
             conn.execute(text(stmt))
 
 def _ensure_wallet(conn, user_id:int):
+    # create table if it somehow doesn't exist
+    conn.execute(text("""
+CREATE TABLE IF NOT EXISTS wallet_balances (
+  user_id INTEGER PRIMARY KEY,
+  balance_cents INTEGER NOT NULL DEFAULT 0
+)
+"""))
     conn.execute(text("""
       INSERT INTO wallet_balances (user_id, balance_cents)
       VALUES (:u, 0) ON CONFLICT(user_id) DO NOTHING
-    """), {"u": user_id})
-
-def _get_user_by_email(conn, email:str):
-    return conn.execute(text("SELECT id, email FROM users WHERE email=:e"), {"e": email}).first()
+    """), {"u": user_id}) conn.execute(text("SELECT id, email FROM users WHERE email=:e"), {"e": email}).first()
 
 def _get_balance(conn, user_id:int)->int:
     row = conn.execute(text("SELECT balance_cents FROM wallet_balances WHERE user_id=:u"), {"u": user_id}).first()
@@ -157,3 +161,4 @@ async def cpx_webhook(request: Request):
             _add_balance(conn, u.id, net_cents)
 
     return {"ok": True, "credited": will_credit, "gross_cents": gross_cents, "net_cents": net_cents}
+
