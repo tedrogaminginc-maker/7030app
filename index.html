@@ -1,0 +1,269 @@
+﻿$h = @'
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>70/30 â€” Login + CPX</title>
+  <style>
+    :root { font-family: system-ui, Arial, sans-serif; }
+    body { margin: 0; background:#0f1220; color:#e7e9ee; }
+    .wrap { max-width: 900px; margin: 40px auto; padding: 24px; }
+    .card { background:#151931; border:1px solid #272b4b; border-radius:14px; padding:20px; margin-bottom:16px; }
+    h1 { margin:0 0 12px; font-size:28px; }
+    h2 { margin:0 0 8px; font-size:20px; }
+    label { display:block; margin:10px 0 6px; color:#b7bdd7; }
+    input { width:100%; padding:10px; border-radius:10px; border:1px solid #394070; background:#0e1130; color:#e7e9ee; }
+    .row { display:flex; gap:12px; flex-wrap:wrap; }
+    button { padding:10px 14px; border-radius:10px; border:1px solid #394070; background:#1d2352; color:#e7e9ee; cursor:pointer; }
+    button.primary { background:#2e59ff; border-color:#2e59ff; }
+    button:disabled { opacity:.6; cursor:not-allowed; }
+    .ok { color:#7dffa0 }
+    .warn { color:#ffd36b }
+    .muted { color:#9ba3c7 }
+    .pill { display:inline-block; padding:3px 8px; border:1px solid #394070; border-radius:999px; font-size:12px; }
+    .stack { display:flex; flex-direction:column; gap:10px; }
+    .spacer { height:10px; }
+    .hidden { display:none; }
+    a { color:#9bb3ff; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="card">
+      <h1>70/30 â€” Auth & CPX</h1>
+      <div id="serverStatus" class="muted">Checking serverâ€¦</div>
+    </div>
+
+    <div id="authCard" class="card">
+      <h2>Sign in</h2>
+      <div class="stack">
+        <label>Email</label>
+        <input id="email" type="email" placeholder="you@example.com" autocomplete="email" />
+        <label>Password</label>
+        <input id="password" type="password" placeholder="â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢" autocomplete="current-password" />
+        <div class="row">
+          <button id="loginBtn" class="primary">Log in</button>
+          <button id="registerBtn">Create account</button>
+        </div>
+        <div class="row">
+          <button id="forgotBtn">Forgot password</button>
+        </div>
+        <div id="authMsg" class="muted"></div>
+      </div>
+    </div>
+
+    <div id="appCard" class="card hidden">
+      <h2>Welcome</h2>
+      <div class="stack">
+        <div>Signed in as: <span id="who" class="pill"></span></div>
+        <div class="row">
+          <button id="cpxBtn" class="primary">Open CPX Surveys</button>
+          <button id="logoutBtn">Log out</button>
+        </div>
+        <div class="spacer"></div>
+        <div class="muted" id="appMsg"></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="muted">If CPX doesnâ€™t open, make sure your server is running at <code>http://127.0.0.1:8000</code>.</div>
+    </div>
+  </div>
+
+<script>
+(() => {
+  // ===== Config =====
+  const CPX_APP_ID = "28541";
+  const CPX_SECURE_HASH = "qTNDcrRbH2XGbK4oT1QvWODM21PiXGMf";
+
+  // Back end base: use same origin if served by server.py; otherwise assume localhost:8000
+  const BASE_URL = (location.origin.startsWith("file:"))
+    ? "http://127.0.0.1:8000"
+    : location.origin;
+
+  // ===== Elements =====
+  const serverStatus = document.getElementById("serverStatus");
+  const authCard = document.getElementById("authCard");
+  const appCard = document.getElementById("appCard");
+  const who = document.getElementById("who");
+  const authMsg = document.getElementById("authMsg");
+  const appMsg = document.getElementById("appMsg");
+
+  const emailEl = document.getElementById("email");
+  const pwEl = document.getElementById("password");
+  const loginBtn = document.getElementById("loginBtn");
+  const registerBtn = document.getElementById("registerBtn");
+  const forgotBtn = document.getElementById("forgotBtn");
+  const logoutBtn = document.getElementById("logoutBtn");
+  const cpxBtn = document.getElementById("cpxBtn");
+
+  // ===== Storage helpers =====
+  function saveAuth({ token, userId, email }) {
+    localStorage.setItem("token", token || "");
+    localStorage.setItem("userId", userId != null ? String(userId) : "");
+    localStorage.setItem("email", email || "");
+  }
+  function clearAuth() {
+    localStorage.removeItem("token");
+    localStorage.removeItem("userId");
+    localStorage.removeItem("email");
+  }
+  function getAuth() {
+    return {
+      token: localStorage.getItem("token") || "",
+      userId: localStorage.getItem("userId") || "",
+      email: localStorage.getItem("email") || ""
+    };
+  }
+
+  // ===== UI state =====
+  function showApp() {
+    const { email, userId } = getAuth();
+    who.textContent = `${email} (id: ${userId})`;
+    authCard.classList.add("hidden");
+    appCard.classList.remove("hidden");
+  }
+  function showAuth() {
+    authCard.classList.remove("hidden");
+    appCard.classList.add("hidden");
+  }
+
+  // ===== API helpers =====
+  async function api(path, opts = {}) {
+    const { token } = getAuth();
+    const headers = Object.assign(
+      { "Content-Type": "application/json" },
+      opts.headers || {}
+    );
+    if (token) headers["Authorization"] = `Bearer ${token}`;
+    const res = await fetch(`${BASE_URL}${path}`, Object.assign(opts, { headers }));
+    if (!res.ok) {
+      const text = await res.text().catch(() => "");
+      throw new Error(text || `HTTP ${res.status}`);
+    }
+    const ct = res.headers.get("content-type") || "";
+    if (ct.includes("application/json")) return res.json();
+    return res.text();
+  }
+
+  // Optional: ping server to show status
+  (async () => {
+    try {
+      await fetch(`${BASE_URL}/`);
+      serverStatus.innerHTML = `<span class="ok">Server OK</span> â€” ${BASE_URL}`;
+    } catch (e) {
+      serverStatus.innerHTML = `<span class="warn">Canâ€™t reach server</span> â€” expected at ${BASE_URL}`;
+    }
+  })();
+
+  // ===== Auth flow =====
+  async function doLogin() {
+    authMsg.textContent = "Logging inâ€¦";
+    disableAuth(true);
+    try {
+      const body = {
+        email: emailEl.value.trim(),
+        password: pwEl.value
+      };
+      const data = await api("/api/auth/login", {
+        method: "POST",
+        body: JSON.stringify(body)
+      });
+      // Expecting { token, user: { id, email } } or similar
+      const token = data.token || data.access_token || "";
+      const userId = (data.user && (data.user.id ?? data.user.user_id)) ?? data.user_id ?? data.id ?? "";
+      const email = (data.user && data.user.email) ?? data.email ?? body.email;
+      saveAuth({ token, userId, email });
+      authMsg.textContent = "Logged in.";
+      showApp();
+    } catch (err) {
+      authMsg.textContent = `Login failed: ${err.message}`;
+    } finally {
+      disableAuth(false);
+    }
+  }
+
+  async function doRegister() {
+    authMsg.textContent = "Creating accountâ€¦";
+    disableAuth(true);
+    try {
+      const body = {
+        email: emailEl.value.trim(),
+        password: pwEl.value
+      };
+      await api("/api/auth/register", {
+        method: "POST",
+        body: JSON.stringify(body)
+      });
+      authMsg.textContent = "Account created. Logging inâ€¦";
+      await doLogin();
+    } catch (err) {
+      authMsg.textContent = `Register failed: ${err.message}`;
+    } finally {
+      disableAuth(false);
+    }
+  }
+
+  async function doForgot() {
+    authMsg.textContent = "Sending reset codeâ€¦";
+    disableAuth(true);
+    try {
+      const body = { email: emailEl.value.trim() };
+      await api("/api/auth/forgot", { method: "POST", body: JSON.stringify(body) });
+      authMsg.textContent = "Reset email sent (check inbox).";
+    } catch (err) {
+      authMsg.textContent = `Reset failed: ${err.message}`;
+    } finally {
+      disableAuth(false);
+    }
+  }
+
+  async function doLogout() {
+    appMsg.textContent = "Logging outâ€¦";
+    try {
+      await api("/api/auth/logout", { method: "POST", body: "{}" }).catch(()=>{});
+    } finally {
+      clearAuth();
+      appMsg.textContent = "Logged out.";
+      showAuth();
+    }
+  }
+
+  function disableAuth(disabled) {
+    loginBtn.disabled = disabled;
+    registerBtn.disabled = disabled;
+    forgotBtn.disabled = disabled;
+  }
+
+  // ===== CPX open =====
+  function openCPX() {
+    const { userId } = getAuth();
+    if (!userId) {
+      appMsg.textContent = "Please log in first.";
+      return;
+    }
+    const url = `https://offers.cpx-research.com/index.php?app_id=${CPX_APP_ID}&ext_user_id=${encodeURIComponent(userId)}&secure_hash=${CPX_SECURE_HASH}`;
+    window.open(url, "_blank", "noopener");
+    appMsg.textContent = "Opening CPX in a new tabâ€¦";
+  }
+
+  // ===== Wire up =====
+  loginBtn.addEventListener("click", doLogin);
+  registerBtn.addEventListener("click", doRegister);
+  forgotBtn.addEventListener("click", doForgot);
+  logoutBtn.addEventListener("click", doLogout);
+  cpxBtn.addEventListener("click", openCPX);
+
+  // Restore session
+  const existing = getAuth();
+  if (existing && existing.userId && existing.email) {
+    showApp();
+  } else {
+    showAuth();
+  }
+})();
+</script>
+</body>
+</html>
+'@

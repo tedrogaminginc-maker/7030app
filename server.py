@@ -4,6 +4,8 @@ from fastapi import FastAPI, HTTPException, Depends, Header
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, EmailStr
 from passlib.hash import bcrypt
+from starlette.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 
 # ---------- Config ----------
 JWT_SECRET = os.getenv('JWT_SECRET', 'change-me')
@@ -268,3 +270,23 @@ async def admin_user(email: EmailStr, auth=Depends(get_claims)):
 @app.get('/')
 def root():
     return {'ok': True, 'service': '7030 backend'}
+
+from fastapi import APIRouter
+router = APIRouter()
+@router.get('/health', include_in_schema=False)
+def _health():
+    return {'ok': True}
+app.include_router(router)
+
+
+# Serve index.html and static web dir
+try:
+    app.mount('/web', StaticFiles(directory='web'), name='web')
+except Exception:
+    pass
+@app.get('/', include_in_schema=False)
+def _root():
+    return FileResponse('index.html')
+@app.get('/index.html', include_in_schema=False)
+def _index():
+    return FileResponse('index.html')
