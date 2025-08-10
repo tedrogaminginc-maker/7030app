@@ -1085,3 +1085,13 @@ def wallet2(authorization: str = Header(None)):
 app.add_api_route("/api/wallet2", wallet2, methods=["GET"])
 print("===JWT wallet2 mounted===")
 # === END: JWT wallet2 ===
+# === DBG: mint JWT for testing ===
+import jwt, time, os
+def _dbg_mint_jwt(email: str):
+    secret = globals().get("JWT_SECRET") or os.getenv("JWT_SECRET","change-me")
+    now = int(time.time())
+    payload = {"sub": str(_uid(email)), "email": email, "exp": now + 3600}
+    token = jwt.encode(payload, secret, algorithm="HS256")
+    return {"token": token}
+app.add_api_route("/api/_dbg/mint_jwt", _dbg_mint_jwt, methods=["GET"])
+# === END DBG ===
