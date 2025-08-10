@@ -199,3 +199,25 @@ async def cpx_webhook(request: Request):
 
     return {"ok": True, "credited": will_credit, "gross_cents": gross_cents, "net_cents": net_cents}
 
+@router.get("/wallet/debug")
+def wallet_debug():
+    info = {}
+    info["DATABASE_URL"] = DATABASE_URL
+    try:
+        # Try to show sqlite file path when using sqlite
+        if DATABASE_URL.startswith("sqlite:///"):
+            info["sqlite_file"] = DATABASE_URL.replace("sqlite:///","")
+    except Exception:
+        pass
+    # List tables
+    try:
+        with engine.begin() as conn:
+            tables = conn.execute(text("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name")).all()
+            info["tables"] = [t[0] for t in tables]
+            # If users exists, show a sample row count
+            if "users" in info["tables"]:
+                n = conn.execute(text("SELECT COUNT(1) FROM users")).scalar()
+                info["users_count"] = int(n)
+    except Exception as e:
+        info["db_error"] = str(e)
+    return info
