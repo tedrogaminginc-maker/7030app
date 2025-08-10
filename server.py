@@ -373,3 +373,22 @@ except Exception as _imp:
     print("CPX_WALLET_IMPORT_ERROR:", _imp)
 # ===== end force-include =====
 
+@app.get("/api/_probe_wallet_import")
+def _probe_wallet_import():
+    try:
+        import cpx_wallet  # noqa
+        return {"import_ok": True}
+    except Exception as e:
+        return {"import_ok": False, "error": str(e)}
+
+@app.post("/api/_mount_wallet")
+def _mount_wallet():
+    try:
+        import cpx_wallet
+        try:
+            app.include_router(cpx_wallet.router)
+            return {"mounted": True}
+        except Exception as e2:
+            return {"mounted": False, "error": f"include failed: {e2}"}
+    except Exception as e:
+        return {"mounted": False, "error": f"import failed: {e}"}
