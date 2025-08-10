@@ -721,3 +721,22 @@ def wallet_balance_inline(email: str):
 
 app.add_api_route("/api/wallet_balance_inline", wallet_balance_inline, methods=["GET"])
 # === END INLINE WALLET BALANCE ===
+# === INLINE ONE-LINER BALANCE ===
+def _dbg_balance(email: str):
+    with _engine.begin() as conn:
+        u = _wi_get_user(conn, email)
+        if not u:
+            return JSONResponse({"error":"User not found","email":email}, status_code=404)
+        _wi_ensure(conn, u.id)
+        bal = _wi_balance(conn, u.id)
+        # optional: quick tx sample
+        rows = conn.execute(text("""
+          SELECT id, source, external_id, net_cents, status, created_at
+          FROM transactions WHERE user_id=:u ORDER BY id DESC LIMIT 5
+        """), {"u": u.id}).all()
+        tx = [{"id": r.id, "source": r.source, "external_id": r.external_id,
+               "net_cents": r.net_cents, "status": r.status, "created_at": r.created_at} for r in rows]
+    return {"email": email, "balance_cents": int(bal), "recent": tx}
+
+app.add_api_route("/api/_dbg/balance", _dbg_balance, methods=["GET"])
+# === END INLINE ONE-LINER BALANCE ===
