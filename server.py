@@ -1,4 +1,5 @@
-﻿import os
+﻿import aiosqlite
+import os
 import cpx
 # ...import os, time, smtplib, hmac, hashlib, jwt, aiosqlite
 from email.message import EmailMessage
@@ -305,5 +306,6 @@ app.include_router(cpx.router)
 
 import cpx_wallet
 app.include_router(cpx_wallet.router)
+
 
 
