@@ -1038,3 +1038,50 @@ CREATE TABLE IF NOT EXISTS wallet_balances (
 except Exception as _e:
     print("===DBG ERROR===", _e)
 # === END DBG: guaranteed routes ===
+# === BEGIN: JWT wallet2 (email from token) ===
+from fastapi import Header, HTTPException
+import jwt
+
+def _extract_email_from_auth(authorization: str | None):
+    if not authorization:
+        raise HTTPException(status_code=401, detail="Missing Authorization")
+    token = authorization
+    if authorization.lower().startswith("bearer "):
+        token = authorization.split(" ", 1)[1]
+    try:
+        # JWT_SECRET is already defined earlier in server.py; fall back if not
+        secret = globals().get("JWT_SECRET") or os.getenv("JWT_SECRET", "change-me")
+        payload = jwt.decode(token, secret, algorithms=["HS256"])
+    except Exception:
+        raise HTTPException(status_code=401, detail="Invalid token")
+    email = (payload.get("email") or "").strip()
+    if not email:
+        # if your tokens don’t include email, we can add a fallback later
+        raise HTTPException(status_code=400, detail="Token missing email")
+    return email
+
+def wallet2(authorization: str = Header(None)):
+    # Reuse _eng and _uid defined above by the dbg block
+    email = _extract_email_from_auth(authorization)
+    uid = _uid(email)
+    with _eng.begin() as conn:
+        conn.execute(text("""
+          INSERT INTO wallet_balances (user_id, balance_cents)
+          VALUES (:u, 0) ON CONFLICT(user_id) DO NOTHING
+        """), {"u": uid})
+        bal = conn.execute(text("SELECT balance_cents FROM wallet_balances WHERE user_id=:u"),
+                           {"u": uid}).scalar() or 0
+        rows = conn.execute(text("""
+          SELECT id, source, external_id, gross_cents, net_cents, status, created_at
+          FROM transactions WHERE user_id=:u ORDER BY id DESC LIMIT 50
+        """), {"u": uid}).all()
+        recent = [{
+          "id": r.id, "source": r.source, "external_id": r.external_id,
+          "gross_cents": r.gross_cents, "net_cents": r.net_cents,
+          "status": r.status, "created_at": r.created_at
+        } for r in rows]
+    return {"email": email, "user_id": uid, "balance_cents": int(bal), "recent": recent}
+
+app.add_api_route("/api/wallet2", wallet2, methods=["GET"])
+print("===JWT wallet2 mounted===")
+# === END: JWT wallet2 ===
