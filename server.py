@@ -1,4 +1,4 @@
-import os, time, smtplib, hmac, hashlib, jwt, aiosqlite
+﻿import os, time, smtplib, hmac, hashlib, jwt, aiosqlite
 from email.message import EmailMessage
 from fastapi import FastAPI, HTTPException, Depends, Header
 from fastapi.middleware.cors import CORSMiddleware
@@ -29,7 +29,11 @@ app = FastAPI(title='7030 Backend')
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=['*'],
+        allow_origins=[
+        "http://localhost:5500",
+        "http://localhost",
+        "http://127.0.0.1:5500"
+    ],
     allow_credentials=True,
     allow_methods=['*'],
     allow_headers=['*'],
@@ -290,3 +294,4 @@ def _root():
 @app.get('/index.html', include_in_schema=False)
 def _index():
     return FileResponse('index.html')
+
