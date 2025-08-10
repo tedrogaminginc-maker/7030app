@@ -8,6 +8,29 @@ from pydantic import BaseModel
 from sqlalchemy import create_engine, text
 from sqlalchemy.exc import IntegrityError
 
+# === DB RESOLUTION START ===
+# Try to use the same DB file as server.py so we see the same 'users' table.
+DB_FILE = os.getenv("DB", "")
+try:
+    from server import DB as _SERVER_DB  # server.py uses aiosqlite.connect(DB)
+    if isinstance(_SERVER_DB, str) and _SERVER_DB:
+        DB_FILE = _SERVER_DB
+except Exception:
+    pass
+
+# Also respect DATABASE_URL if provided (Postgres later)
+DATABASE_URL = os.getenv("DATABASE_URL", "")
+
+# Normalize into SQLAlchemy URL
+if not DATABASE_URL:
+    if not DB_FILE:
+        DB_FILE = "./app.db"
+    # Support SQLite URI or plain path
+    if DB_FILE.startswith("sqlite:///"):
+        DATABASE_URL = DB_FILE
+    else:
+        DATABASE_URL = f"sqlite:///{DB_FILE}"
+# === DB RESOLUTION END ===
 CPX_SECURE_HASH = os.getenv("CPX_SECURE_HASH", "")  # optional
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./app.db")
 
@@ -175,3 +198,4 @@ async def cpx_webhook(request: Request):
             _add_balance(conn, u.id, net_cents)
 
     return {"ok": True, "credited": will_credit, "gross_cents": gross_cents, "net_cents": net_cents}
+
