@@ -402,3 +402,155 @@ try:
         print("===WALLET MOUNT ERROR===", e2)
 except Exception as e:
     print("===WALLET IMPORT ERROR===", e)
+# === INLINE WALLET (no import/mount issues) ===
+import os
+from datetime import datetime
+from fastapi import HTTPException, Request
+from fastapi.responses import JSONResponse
+from sqlalchemy import create_engine, text
+from sqlalchemy.exc import IntegrityError
+
+# Reuse the same DB file as the rest of the app
+_DB = globals().get("DB", "db.sqlite")
+_DATABASE_URL = os.getenv("DATABASE_URL") or (_DB if str(_DB).startswith("sqlite:///") else f"sqlite:///{_DB}")
+_CPX_HASH = os.getenv("CPX_SECURE_HASH", "")
+
+_engine = create_engine(_DATABASE_URL, future=True)
+
+with _engine.begin() as _conn:
+    _conn.execute(text("""
+CREATE TABLE IF NOT EXISTS transactions (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER NOT NULL,
+  source TEXT NOT NULL,
+  external_id TEXT NOT NULL,
+  gross_cents INTEGER NOT NULL,
+  net_cents INTEGER NOT NULL,
+  status TEXT NOT NULL,
+  meta TEXT,
+  created_at TEXT NOT NULL,
+  UNIQUE(source, external_id)
+)"""))
+    _conn.execute(text("""
+CREATE TABLE IF NOT EXISTS wallet_balances (
+  user_id INTEGER PRIMARY KEY,
+  balance_cents INTEGER NOT NULL DEFAULT 0
+)"""))
+
+def _w_get_user(conn, email):
+    return conn.execute(text("SELECT id, email FROM users WHERE email=:e"), {"e": email}).first()
+
+def _w_ensure(conn, uid):
+    conn.execute(text("""
+CREATE TABLE IF NOT EXISTS wallet_balances (
+  user_id INTEGER PRIMARY KEY,
+  balance_cents INTEGER NOT NULL DEFAULT 0
+)"""))
+    conn.execute(text("""
+      INSERT INTO wallet_balances (user_id, balance_cents)
+      VALUES (:u, 0)
+      ON CONFLICT(user_id) DO NOTHING
+    """), {"u": uid})
+
+def _w_balance(conn, uid):
+    row = conn.execute(text("SELECT balance_cents FROM wallet_balances WHERE user_id=:u"), {"u": uid}).first()
+    return int(row[0]) if row else 0
+
+def _w_add(conn, uid, add_cents):
+    conn.execute(text("UPDATE wallet_balances SET balance_cents = balance_cents + :a WHERE user_id=:u"),
+                 {"a": int(add_cents), "u": uid})
+
+@app.get("/api/wallet_inline")
+def wallet_inline(email: str):
+    with _engine.begin() as conn:
+        u = _w_get_user(conn, email)
+        if not u:
+            raise HTTPException(status_code=404, detail="User not found")
+        _w_ensure(conn, u.id)
+        bal = _w_balance(conn, u.id)
+        rows = conn.execute(text("""
+          SELECT id, source, external_id, gross_cents, net_cents, status, created_at
+          FROM transactions WHERE user_id=:u ORDER BY id DESC LIMIT 50
+        """), {"u": u.id}).all()
+        recent = [{
+          "id": r.id, "source": r.source, "external_id": r.external_id,
+          "gross_cents": r.gross_cents, "net_cents": r.net_cents,
+          "status": r.status, "created_at": r.created_at
+        } for r in rows]
+    return {"balance_cents": int(bal), "recent": recent}
+
+@app.api_route("/api/cpx/webhook_inline", methods=["GET","POST"])
+async def cpx_webhook_inline(request: Request):
+    # parse input
+    if request.method == "GET":
+        data = dict(request.query_params)
+    else:
+        try:
+            data = await request.json()
+        except Exception:
+            form = await request.form()
+            data = dict(form)
+
+    ext_user_id = (data.get("ext_user_id") or data.get("user") or data.get("subid") or "").strip()
+    txid        = (data.get("txid") or data.get("clickid") or data.get("transaction_id") or "").strip()
+    status      = (data.get("status") or "").lower().strip()
+    amount_raw  = (data.get("amount") or "").strip()
+    reward_raw  = (data.get("reward") or "").strip()
+    incoming    = (data.get("secure_hash") or data.get("hash") or "").strip()
+
+    if not ext_user_id or not txid:
+        return JSONResponse({"error": "Missing ext_user_id or txid"}, status_code=400)
+
+    # optional signature for now (we can require it later)
+    if _CPX_HASH and incoming and incoming != _CPX_HASH:
+        return JSONResponse({"error": "Bad signature"}, status_code=401)
+
+    # dollars->cents or raw cents fallback
+    gross_cents = 0
+    try:
+        if amount_raw:
+            gross_cents = int(round(float(amount_raw) * 100))
+        elif reward_raw:
+            gross_cents = int(float(reward_raw))
+    except Exception:
+        gross_cents = 0
+
+    net_cents = int(gross_cents * 0.70) if gross_cents > 0 else 0
+    allowed = {"approved","confirmed","completed","paid","success"}
+    will_credit = (status in allowed) and (net_cents > 0)
+
+    created_at = datetime.utcnow().isoformat()
+    import json as _json
+    meta_json = _json.dumps(data)
+
+    with _engine.begin() as conn:
+        u = _w_get_user(conn, ext_user_id)
+        if not u:
+            # record ignored for traceability
+            try:
+                conn.execute(text("""
+                  INSERT INTO transactions (user_id, source, external_id, gross_cents, net_cents, status, meta, created_at)
+                  VALUES (:uid, 'cpx', :tx, :g, :n, :st, :m, :ts)
+                """), {"uid": 0, "tx": txid, "g": gross_cents, "n": net_cents,
+                       "st": "ignored", "m": meta_json, "ts": created_at})
+            except Exception:
+                pass
+            return JSONResponse({"ok": True, "credited": False, "reason": "user_not_found"}, status_code=202)
+
+        _w_ensure(conn, u.id)
+        # dedupe
+        try:
+            conn.execute(text("""
+              INSERT INTO transactions (user_id, source, external_id, gross_cents, net_cents, status, meta, created_at)
+              VALUES (:uid, 'cpx', :tx, :g, :n, :st, :m, :ts)
+            """), {"uid": u.id, "tx": txid, "g": gross_cents, "n": net_cents,
+                   "st": "credited" if will_credit else "ignored",
+                   "m": meta_json, "ts": created_at})
+        except IntegrityError:
+            return {"ok": True, "deduped": True}
+
+        if will_credit:
+            _w_add(conn, u.id, net_cents)
+
+    return {"ok": True, "credited": will_credit, "gross_cents": gross_cents, "net_cents": net_cents}
+# === END INLINE WALLET ===
