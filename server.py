@@ -936,3 +936,105 @@ CREATE TABLE IF NOT EXISTS wallet_balances (
 except Exception as e:
     print("===WALLET2_ERROR===", e)
 # === END DBG WALLET2 ===
+# === BEGIN DBG: guaranteed routes ===
+print("===DBG: starting===")
+try:
+    from fastapi.responses import JSONResponse
+    from sqlalchemy import create_engine, text
+    from datetime import datetime
+    from zlib import crc32
+    import os
+
+    # Reuse same DB as app (DB or DATABASE_URL)
+    _DB = globals().get("DB", "db.sqlite")
+    _DATABASE_URL = os.getenv("DATABASE_URL") or (_DB if str(_DB).startswith("sqlite:///") else f"sqlite:///{_DB}")
+    _eng = create_engine(_DATABASE_URL, future=True)
+
+    # Ensure tables
+    with _eng.begin() as c:
+        c.execute(text("""
+CREATE TABLE IF NOT EXISTS transactions (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER NOT NULL,
+  source TEXT NOT NULL,
+  external_id TEXT NOT NULL,
+  gross_cents INTEGER NOT NULL,
+  net_cents INTEGER NOT NULL,
+  status TEXT NOT NULL,
+  meta TEXT,
+  created_at TEXT NOT NULL,
+  UNIQUE(source, external_id)
+)"""))
+        c.execute(text("""
+CREATE TABLE IF NOT EXISTS wallet_balances (
+  user_id INTEGER PRIMARY KEY,
+  balance_cents INTEGER NOT NULL DEFAULT 0
+)"""))
+
+    def _uid(email: str) -> int:
+        return int(crc32(email.encode("utf-8")) & 0xffffffff)
+
+    def _dbg_ping():
+        return {"ok": True, "marker": "PING_OK"}
+
+    def _dbg_routes():
+        out = []
+        for r in app.routes:
+            try:
+                out.append({"path": r.path, "methods": list(r.methods or [])})
+            except Exception:
+                pass
+        return out
+
+    def _dbg_credit2(email: str, txid: str, amount: float, status: str = "approved"):
+        uid = _uid(email)
+        gross_cents = int(round(float(amount) * 100))
+        net_cents = int(gross_cents * 0.70) if gross_cents > 0 else 0
+        will_credit = (status.lower() in {"approved","confirmed","completed","paid","success"}) and net_cents > 0
+        ts = datetime.utcnow().isoformat()
+        with _eng.begin() as conn:
+            conn.execute(text("""
+              INSERT INTO wallet_balances (user_id, balance_cents)
+              VALUES (:u, 0) ON CONFLICT(user_id) DO NOTHING
+            """), {"u": uid})
+            try:
+                conn.execute(text("""
+                  INSERT INTO transactions (user_id, source, external_id, gross_cents, net_cents, status, meta, created_at)
+                  VALUES (:u, 'dbg', :tx, :g, :n, :st, NULL, :ts)
+                """), {"u": uid, "tx": txid, "g": gross_cents, "n": net_cents,
+                       "st": "credited" if will_credit else "ignored", "ts": ts})
+            except Exception:
+                return {"ok": True, "deduped": True}
+            if will_credit:
+                conn.execute(text("UPDATE wallet_balances SET balance_cents = balance_cents + :a WHERE user_id=:u"),
+                             {"a": net_cents, "u": uid})
+        return {"ok": True, "credited": will_credit, "gross_cents": gross_cents, "net_cents": net_cents}
+
+    def _dbg_wallet2(email: str):
+        uid = _uid(email)
+        with _eng.begin() as conn:
+            conn.execute(text("""
+              INSERT INTO wallet_balances (user_id, balance_cents)
+              VALUES (:u, 0) ON CONFLICT(user_id) DO NOTHING
+            """), {"u": uid})
+            bal = conn.execute(text("SELECT balance_cents FROM wallet_balances WHERE user_id=:u"),
+                               {"u": uid}).scalar() or 0
+            rows = conn.execute(text("""
+              SELECT id, source, external_id, gross_cents, net_cents, status, created_at
+              FROM transactions WHERE user_id=:u ORDER BY id DESC LIMIT 20
+            """), {"u": uid}).all()
+            recent = [{
+              "id": r.id, "source": r.source, "external_id": r.external_id,
+              "gross_cents": r.gross_cents, "net_cents": r.net_cents,
+              "status": r.status, "created_at": r.created_at
+            } for r in rows]
+        return {"email": email, "user_id": uid, "balance_cents": int(bal), "recent": recent}
+
+    app.add_api_route("/api/_dbg/ping", _dbg_ping, methods=["GET"])
+    app.add_api_route("/api/_dbg/routes", _dbg_routes, methods=["GET"])
+    app.add_api_route("/api/_dbg/credit2", _dbg_credit2, methods=["GET"])
+    app.add_api_route("/api/_dbg/wallet2", _dbg_wallet2, methods=["GET"])
+    print("===DBG: routes mounted===")
+except Exception as _e:
+    print("===DBG ERROR===", _e)
+# === END DBG: guaranteed routes ===
