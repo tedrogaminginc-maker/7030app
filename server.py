@@ -1110,3 +1110,78 @@ def _dbg_mint_jwt(email: str):
 app.add_api_route("/api/_dbg/mint_jwt", _dbg_mint_jwt, methods=["GET"])
 print("===DBG mint_jwt mounted===")
 # === END DBG ===
+# === BEGIN: CPX webhook2 (secured via header) ===
+from fastapi import Request, Header
+
+def cpx_webhook2(request: Request, x_cpx_secret: str | None = Header(None)):
+    # Require secret
+    expected = os.getenv("CPX_SECURE_HASH", "").strip()
+    if not expected or not x_cpx_secret or x_cpx_secret.strip() != expected:
+        raise HTTPException(status_code=401, detail="bad secret")
+
+    # Accept either JSON body or query params
+    async def _read_input():
+        if request.method == "POST":
+            try:
+                body = await request.json()
+                return {
+                    "ext_user_id": str(body.get("ext_user_id", "")).strip(),
+                    "txid":        str(body.get("txid","")).strip(),
+                    "amount":      str(body.get("amount","")).strip(),
+                    "status":      str(body.get("status","")).strip()
+                }
+            except Exception:
+                pass
+        q = request.query_params
+        return {
+            "ext_user_id": str(q.get("ext_user_id","")).strip(),
+            "txid":        str(q.get("txid","")).strip(),
+            "amount":      str(q.get("amount","")).strip(),
+            "status":      str(q.get("status","")).strip()
+        }
+
+    import asyncio
+    data = asyncio.get_event_loop().run_until_complete(_read_input())
+    email  = data.get("ext_user_id") or ""
+    txid   = data.get("txid") or ""
+    status = (data.get("status") or "").lower()
+    try:
+        amt = float(str(data.get("amount") or "0").replace(",",""))
+    except Exception:
+        amt = 0.0
+
+    # Map email -> uid using the same helper + engine we already set up
+    if not email or not txid:
+        raise HTTPException(status_code=422, detail="missing email/txid")
+
+    uid = _uid(email)
+    gross_cents = int(round(amt * 100))
+    net_cents   = int(gross_cents * 0.70) if gross_cents > 0 else 0
+    will_credit = (status in {"approved","confirmed","completed","paid","success"}) and net_cents > 0
+    ts = datetime.utcnow().isoformat()
+
+    with _eng.begin() as conn:
+        conn.execute(text("""
+          INSERT INTO wallet_balances (user_id, balance_cents)
+          VALUES (:u, 0) ON CONFLICT(user_id) DO NOTHING
+        """), {"u": uid})
+
+        # dedupe on (source, external_id)
+        try:
+            conn.execute(text("""
+              INSERT INTO transactions (user_id, source, external_id, gross_cents, net_cents, status, meta, created_at)
+              VALUES (:u, 'cpx', :tx, :g, :n, :st, NULL, :ts)
+            """), {"u": uid, "tx": txid, "g": gross_cents, "n": net_cents,
+                   "st": "credited" if will_credit else "ignored", "ts": ts})
+        except Exception:
+            return {"ok": True, "deduped": True}
+
+        if will_credit:
+            conn.execute(text("UPDATE wallet_balances SET balance_cents = balance_cents + :a WHERE user_id=:u"),
+                         {"a": net_cents, "u": uid})
+
+    return {"ok": True, "credited": will_credit, "email": email, "gross_cents": gross_cents, "net_cents": net_cents}
+
+app.add_api_route("/api/cpx/webhook2", cpx_webhook2, methods=["GET","POST"])
+print("===webhook2 mounted===")
+# === END: CPX webhook2 ===
