@@ -360,3 +360,16 @@ def db_debug():
     return info
 app.include_router(dbdebug)
 
+
+# ===== force-include cpx_wallet (with visible logging) =====
+try:
+    import cpx_wallet
+    try:
+        app.include_router(cpx_wallet.router)
+        print("CPX_WALLET: router mounted")
+    except Exception as _merr:
+        print("CPX_WALLET_INCLUDE_ERROR:", _merr)
+except Exception as _imp:
+    print("CPX_WALLET_IMPORT_ERROR:", _imp)
+# ===== end force-include =====
+
