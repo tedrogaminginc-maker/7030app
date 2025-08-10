@@ -301,3 +301,7 @@ def _index():
 # Mount CPX/wallet routes
 app.include_router(cpx.router)
 
+
+import cpx_wallet
+app.include_router(cpx_wallet.router)
+
