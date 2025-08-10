@@ -708,3 +708,16 @@ async def cpx_webhook_inline(request: Request):
 app.add_api_route("/api/wallet_inline", wallet_inline, methods=["GET"])
 app.add_api_route("/api/cpx/webhook_inline", cpx_webhook_inline, methods=["GET","POST"])
 # === END INLINE WALLET WIRED ===
+# === INLINE WALLET BALANCE (guaranteed mount) ===
+def wallet_balance_inline(email: str):
+    from sqlalchemy import text
+    with _engine.begin() as conn:
+        u = _wi_get_user(conn, email)
+        if not u:
+            raise HTTPException(status_code=404, detail="User not found")
+        _wi_ensure(conn, u.id)
+        bal = _wi_balance(conn, u.id)
+    return {"balance_cents": int(bal)}
+
+app.add_api_route("/api/wallet_balance_inline", wallet_balance_inline, methods=["GET"])
+# === END INLINE WALLET BALANCE ===
