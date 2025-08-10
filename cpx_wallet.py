@@ -221,3 +221,23 @@ def wallet_debug():
     except Exception as e:
         info["db_error"] = str(e)
     return info
+@router.get("/wallet/debug")
+def wallet_debug():
+    info = {"ok": True}
+    try:
+        info["DATABASE_URL"] = DATABASE_URL
+        if DATABASE_URL.startswith("sqlite:///"):
+            info["sqlite_file"] = DATABASE_URL.replace("sqlite:///","")
+        with engine.begin() as conn:
+            rows = conn.execute(text("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name")).all()
+            info["tables"] = [r[0] for r in rows]
+            if "users" in info["tables"]:
+                info["users_count"] = int(conn.execute(text("SELECT COUNT(1) FROM users")).scalar() or 0)
+            if "wallet_balances" in info["tables"]:
+                info["wallet_count"] = int(conn.execute(text("SELECT COUNT(1) FROM wallet_balances")).scalar() or 0)
+            if "transactions" in info["tables"]:
+                info["tx_count"] = int(conn.execute(text("SELECT COUNT(1) FROM transactions")).scalar() or 0)
+    except Exception as e:
+        info["ok"] = False
+        info["error"] = str(e)
+    return info
