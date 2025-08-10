@@ -842,3 +842,97 @@ def _dbg_credit_by_email(email: str, txid: str, amount: float, status: str = "ap
 
     return {"ok": True, "credited": will_credit, "email": email, "gross_cents": gross_cents, "net_cents": net_cents}
 # === END _DBG email-keyed wallet ===
+# === BEGIN DBG: email-keyed wallet (always mounts) ===
+from sqlalchemy import create_engine, text
+from datetime import datetime
+from zlib import crc32
+import os
+
+print("===ADDING_WALLET2===")
+try:
+    _DB = globals().get("DB", "db.sqlite")
+    _DATABASE_URL = os.getenv("DATABASE_URL") or (_DB if str(_DB).startswith("sqlite:///") else f"sqlite:///{_DB}")
+    _engine2 = create_engine(_DATABASE_URL, future=True)
+
+    with _engine2.begin() as c:
+        c.execute(text("""
+CREATE TABLE IF NOT EXISTS transactions (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER NOT NULL,
+  source TEXT NOT NULL,
+  external_id TEXT NOT NULL,
+  gross_cents INTEGER NOT NULL,
+  net_cents INTEGER NOT NULL,
+  status TEXT NOT NULL,
+  meta TEXT,
+  created_at TEXT NOT NULL,
+  UNIQUE(source, external_id)
+)"""))
+        c.execute(text("""
+CREATE TABLE IF NOT EXISTS wallet_balances (
+  user_id INTEGER PRIMARY KEY,
+  balance_cents INTEGER NOT NULL DEFAULT 0
+)"""))
+
+    def _uid(email: str) -> int:
+        return int(crc32(email.encode("utf-8")) & 0xffffffff)
+
+    def _wallet2(email: str):
+        uid = _uid(email)
+        with _engine2.begin() as conn:
+            conn.execute(text("""
+              INSERT INTO wallet_balances (user_id, balance_cents)
+              VALUES (:u, 0)
+              ON CONFLICT(user_id) DO NOTHING
+            """), {"u": uid})
+            row = conn.execute(text("SELECT balance_cents FROM wallet_balances WHERE user_id=:u"), {"u": uid}).first()
+            bal = int(row[0]) if row else 0
+            rows = conn.execute(text("""
+              SELECT id, source, external_id, gross_cents, net_cents, status, created_at
+              FROM transactions
+              WHERE user_id=:u
+              ORDER BY id DESC
+              LIMIT 20
+            """), {"u": uid}).all()
+            recent = [{
+                "id": r.id, "source": r.source, "external_id": r.external_id,
+                "gross_cents": r.gross_cents, "net_cents": r.net_cents,
+                "status": r.status, "created_at": r.created_at
+            } for r in rows]
+        return {"email": email, "user_id": uid, "balance_cents": bal, "recent": recent}
+
+    def _credit2(email: str, txid: str, amount: float, status: str = "approved"):
+        uid = _uid(email)
+        gross_cents = int(round(float(amount) * 100))
+        net_cents = int(gross_cents * 0.70) if gross_cents > 0 else 0
+        allowed = {"approved","confirmed","completed","paid","success"}
+        will_credit = (status.lower() in allowed) and (net_cents > 0)
+        ts = datetime.utcnow().isoformat()
+
+        with _engine2.begin() as conn:
+            conn.execute(text("""
+              INSERT INTO wallet_balances (user_id, balance_cents)
+              VALUES (:u, 0)
+              ON CONFLICT(user_id) DO NOTHING
+            """), {"u": uid})
+            try:
+                conn.execute(text("""
+                  INSERT INTO transactions (user_id, source, external_id, gross_cents, net_cents, status, meta, created_at)
+                  VALUES (:u, 'dbg', :tx, :g, :n, :st, NULL, :ts)
+                """), {"u": uid, "tx": txid, "g": gross_cents, "n": net_cents,
+                       "st": "credited" if will_credit else "ignored", "ts": ts})
+            except Exception:
+                return {"ok": True, "deduped": True}
+
+            if will_credit:
+                conn.execute(text("UPDATE wallet_balances SET balance_cents = balance_cents + :a WHERE user_id=:u"),
+                             {"a": net_cents, "u": uid})
+
+        return {"ok": True, "credited": will_credit, "gross_cents": gross_cents, "net_cents": net_cents}
+
+    app.add_api_route("/api/_dbg/wallet2", _wallet2, methods=["GET"])
+    app.add_api_route("/api/_dbg/credit2", _credit2, methods=["GET"])
+    print("===WALLET2_READY===")
+except Exception as e:
+    print("===WALLET2_ERROR===", e)
+# === END DBG WALLET2 ===
