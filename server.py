@@ -309,3 +309,26 @@ app.include_router(cpx_wallet.router)
 
 
 
+from fastapi import APIRouter
+import sqlite3
+dbdebug = APIRouter()
+@dbdebug.get("/api/db/debug")
+def db_debug():
+    info = {}
+    try:
+        # Your server.py uses aiosqlite.connect(DB), so expose DB
+        from server import DB as _DB  # this file
+        info["DB"] = _DB
+        # Try opening with sqlite3 to inspect tables
+        conn = sqlite3.connect(_DB)
+        cur = conn.cursor()
+        cur.execute("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name")
+        info["tables"] = [r[0] for r in cur.fetchall()]
+        if "users" in info["tables"]:
+            cur.execute("SELECT COUNT(1) FROM users")
+            info["users_count"] = cur.fetchone()[0]
+        conn.close()
+    except Exception as e:
+        info["error"] = str(e)
+    return info
+app.include_router(dbdebug)
