@@ -1185,3 +1185,110 @@ def cpx_webhook2(request: Request, x_cpx_secret: str | None = Header(None)):
 app.add_api_route("/api/cpx/webhook2", cpx_webhook2, methods=["GET","POST"])
 print("===webhook2 mounted===")
 # === END: CPX webhook2 ===
+# === BEGIN: CPX webhook4 (async, secured, self-contained) ===
+from fastapi import Request, Header, HTTPException
+from sqlalchemy import create_engine, text
+from datetime import datetime
+from zlib import crc32
+import os, traceback
+
+# Build engine from DATABASE_URL or fallback to sqlite file used by app
+_DATABASE_URL = os.getenv("DATABASE_URL")
+if not _DATABASE_URL:
+    _DB = globals().get("DB", "db.sqlite")
+    _DATABASE_URL = _DB if str(_DB).startswith("sqlite:///") else f"sqlite:///{_DB}"
+_CPX_ENG = create_engine(_DATABASE_URL, future=True)
+
+# Ensure required tables exist (idempotent)
+with _CPX_ENG.begin() as c:
+    c.execute(text("""
+CREATE TABLE IF NOT EXISTS transactions (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER NOT NULL,
+  source TEXT NOT NULL,
+  external_id TEXT NOT NULL,
+  gross_cents INTEGER NOT NULL,
+  net_cents INTEGER NOT NULL,
+  status TEXT NOT NULL,
+  meta TEXT,
+  created_at TEXT NOT NULL,
+  UNIQUE(source, external_id)
+)"""))
+    c.execute(text("""
+CREATE TABLE IF NOT EXISTS wallet_balances (
+  user_id INTEGER PRIMARY KEY,
+  balance_cents INTEGER NOT NULL DEFAULT 0
+)"""))
+
+def _cpx_uid(email: str) -> int:
+    return int(crc32(email.encode("utf-8")) & 0xffffffff)
+
+async def cpx_webhook4(request: Request, x_cpx_secret: str | None = Header(None)):
+    try:
+        # Check shared secret
+        expected = (os.getenv("CPX_SECURE_HASH") or "").strip()
+        if not expected or not x_cpx_secret or x_cpx_secret.strip() != expected:
+            raise HTTPException(status_code=401, detail="bad secret")
+
+        # Prefer JSON body; fall back to query
+        try:
+            data = await request.json()
+        except Exception:
+            data = {}
+        if not data:
+            q = request.query_params
+            data = {
+                "ext_user_id": q.get("ext_user_id",""),
+                "txid":        q.get("txid",""),
+                "amount":      q.get("amount",""),
+                "status":      q.get("status",""),
+            }
+
+        email  = str(data.get("ext_user_id","")).strip()
+        txid   = str(data.get("txid","")).strip()
+        status = str(data.get("status","")).lower().strip()
+        raw_amt = str(data.get("amount") or "0").replace(",","")
+        try:
+            amt = float(raw_amt)
+        except Exception:
+            amt = 0.0
+
+        if not email or not txid:
+            raise HTTPException(status_code=422, detail="missing email/txid")
+
+        uid = _cpx_uid(email)
+        gross_cents = int(round(amt * 100))
+        net_cents   = int(gross_cents * 0.70) if gross_cents > 0 else 0
+        will_credit = (status in {"approved","confirmed","completed","paid","success"}) and net_cents > 0
+        ts = datetime.utcnow().isoformat()
+
+        with _CPX_ENG.begin() as conn:
+            conn.execute(text("""
+              INSERT INTO wallet_balances (user_id, balance_cents)
+              VALUES (:u, 0) ON CONFLICT(user_id) DO NOTHING
+            """), {"u": uid})
+
+            try:
+                conn.execute(text("""
+                  INSERT INTO transactions (user_id, source, external_id, gross_cents, net_cents, status, meta, created_at)
+                  VALUES (:u, 'cpx', :tx, :g, :n, :st, NULL, :ts)
+                """), {"u": uid, "tx": txid, "g": gross_cents, "n": net_cents,
+                       "st": "credited" if will_credit else "ignored", "ts": ts})
+            except Exception:
+                return {"ok": True, "deduped": True, "email": email}
+
+            if will_credit:
+                conn.execute(text("UPDATE wallet_balances SET balance_cents = balance_cents + :a WHERE user_id=:u"),
+                             {"a": net_cents, "u": uid})
+
+        return {"ok": True, "credited": will_credit, "email": email, "gross_cents": gross_cents, "net_cents": net_cents}
+    except HTTPException:
+        raise
+    except Exception as e:
+        print("CPX_WEBHOOK4_ERROR:", e)
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail="webhook4 crashed")
+
+app.add_api_route("/api/cpx/webhook4", cpx_webhook4, methods=["GET","POST"])
+print("===webhook4 mounted===")
+# === END: CPX webhook4 ===
