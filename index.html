@@ -1,10 +1,10 @@
-﻿$h = @'
+$h = @'
 <!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>70/30 â€” Login + CPX</title>
+  <title>70/30 � Login + CPX</title>
   <style>
     :root { font-family: system-ui, Arial, sans-serif; }
     body { margin: 0; background:#0f1220; color:#e7e9ee; }
@@ -31,8 +31,8 @@
 <body>
   <div class="wrap">
     <div class="card">
-      <h1>70/30 â€” Auth & CPX</h1>
-      <div id="serverStatus" class="muted">Checking serverâ€¦</div>
+      <h1>70/30 � Auth & CPX</h1>
+      <div id="serverStatus" class="muted">Checking server…</div>
     </div>
 
     <div id="authCard" class="card">
@@ -41,7 +41,7 @@
         <label>Email</label>
         <input id="email" type="email" placeholder="you@example.com" autocomplete="email" />
         <label>Password</label>
-        <input id="password" type="password" placeholder="â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢" autocomplete="current-password" />
+        <input id="password" type="password" placeholder="••••••••" autocomplete="current-password" />
         <div class="row">
           <button id="loginBtn" class="primary">Log in</button>
           <button id="registerBtn">Create account</button>
@@ -67,7 +67,7 @@
     </div>
 
     <div class="card">
-      <div class="muted">If CPX doesnâ€™t open, make sure your server is running at <code>http://127.0.0.1:8000</code>.</div>
+      <div class="muted">If CPX doesn’t open, make sure your server is running at <code>http://127.0.0.1:8000</code>.</div>
     </div>
   </div>
 
@@ -78,9 +78,7 @@
   const CPX_SECURE_HASH = "qTNDcrRbH2XGbK4oT1QvWODM21PiXGMf";
 
   // Back end base: use same origin if served by server.py; otherwise assume localhost:8000
-  const BASE_URL = (location.origin.startsWith("file:"))
-    ? "http://127.0.0.1:8000"
-    : location.origin;
+  const BASE_URL = "https://seven030app-backend.onrender.com";
 
   // ===== Elements =====
   const serverStatus = document.getElementById("serverStatus");
@@ -151,15 +149,15 @@
   (async () => {
     try {
       await fetch(`${BASE_URL}/`);
-      serverStatus.innerHTML = `<span class="ok">Server OK</span> â€” ${BASE_URL}`;
+      serverStatus.innerHTML = `<span class="ok">Server OK</span> � ${BASE_URL}`;
     } catch (e) {
-      serverStatus.innerHTML = `<span class="warn">Canâ€™t reach server</span> â€” expected at ${BASE_URL}`;
+      serverStatus.innerHTML = `<span class="warn">Can’t reach server</span> � expected at ${BASE_URL}`;
     }
   })();
 
   // ===== Auth flow =====
   async function doLogin() {
-    authMsg.textContent = "Logging inâ€¦";
+    authMsg.textContent = "Logging in…";
     disableAuth(true);
     try {
       const body = {
@@ -185,7 +183,7 @@
   }
 
   async function doRegister() {
-    authMsg.textContent = "Creating accountâ€¦";
+    authMsg.textContent = "Creating account…";
     disableAuth(true);
     try {
       const body = {
@@ -196,7 +194,7 @@
         method: "POST",
         body: JSON.stringify(body)
       });
-      authMsg.textContent = "Account created. Logging inâ€¦";
+      authMsg.textContent = "Account created. Logging in…";
       await doLogin();
     } catch (err) {
       authMsg.textContent = `Register failed: ${err.message}`;
@@ -206,7 +204,7 @@
   }
 
   async function doForgot() {
-    authMsg.textContent = "Sending reset codeâ€¦";
+    authMsg.textContent = "Sending reset code…";
     disableAuth(true);
     try {
       const body = { email: emailEl.value.trim() };
@@ -220,7 +218,7 @@
   }
 
   async function doLogout() {
-    appMsg.textContent = "Logging outâ€¦";
+    appMsg.textContent = "Logging out…";
     try {
       await api("/api/auth/logout", { method: "POST", body: "{}" }).catch(()=>{});
     } finally {
@@ -245,7 +243,7 @@
     }
     const url = `https://offers.cpx-research.com/index.php?app_id=${CPX_APP_ID}&ext_user_id=${encodeURIComponent(userId)}&secure_hash=${CPX_SECURE_HASH}`;
     window.open(url, "_blank", "noopener");
-    appMsg.textContent = "Opening CPX in a new tabâ€¦";
+    appMsg.textContent = "Opening CPX in a new tab…";
   }
 
   // ===== Wire up =====
@@ -264,6 +262,205 @@
   }
 })();
 </script>
+<!-- BEGIN: 7030 reset shim v2 -->
+<script>
+(function(){
+  const origFetch = window.fetch;
+  window.fetch = async function(input, init = {}){
+    try{
+      const method = (init?.method || "GET").toUpperCase();
+      const urlStr = (typeof input === "string") ? input : (input?.url || "");
+      // Only intercept POST /api/auth/forgot
+      if (method === "POST" && urlStr.includes("/api/auth/forgot")) {
+        // Try to read email from body JSON (if any)�
+        let email = null;
+        if (init.body) { try { email = (JSON.parse(init.body)).email } catch(e){} }
+        // �or from the page (common ids/selectors)
+        if (!email) {
+          const el = document.querySelector('#email, input[type="email"], input[name="email"]');
+          if (el && el.value) email = el.value.trim();
+        }
+        // If we have an email, rewrite to request endpoint with query param
+        if (email) {
+          const u = new URL(urlStr, location.origin);
+          u.pathname = u.pathname.replace("/api/auth/forgot", "/api/auth/reset/request");
+          u.searchParams.set("email", email);
+          // backend expects query only; drop body
+          init.body = undefined;
+          // keep headers sane; server already handles CORS
+          init.headers = Object.assign({}, init.headers, { "Content-Type": "application/json" });
+          return origFetch(u.toString(), init);
+        }
+      }
+    } catch(e){ console.warn("reset shim v2 error", e); }
+    return origFetch(input, init);
+  };
+})();
+</script>
+<!-- END: 7030 reset shim v2 -->
+<!-- BEGIN: 7030 reset UI patch -->
+<script>
+(function(){
+  const BASE_URL = (typeof window.BASE_URL === "string" && window.BASE_URL) || "https://seven030app-backend.onrender.com";
+
+  // --- tiny reset panel (UI) ---
+  function ensureResetPanel(){
+    if (document.getElementById("reset-panel")) return;
+    const style = document.createElement("style");
+    style.textContent = `
+      #reset-panel{position:fixed;inset:0;background:rgba(0,0,0,.5);display:none;align-items:center;justify-content:center;z-index:999999}
+      #reset-card{background:#fff;color:#111;padding:16px 18px;width:360px;border-radius:12px;font-family:system-ui,Arial;box-shadow:0 8px 32px rgba(0,0,0,.35)}
+      #reset-card h2{margin:0 0 8px 0;font-size:18px}
+      #reset-card label{display:block;margin-top:8px;font-size:14px}
+      #reset-card input{width:100%;padding:10px;margin-top:4px;border:1px solid #ccc;border-radius:8px;box-sizing:border-box}
+      #reset-actions{display:flex;gap:8px;margin-top:12px}
+      #reset-actions button{flex:1;padding:10px;border-radius:8px;border:0;background:#111;color:#fff;cursor:pointer}
+      #reset-actions button.secondary{background:#e5e5e5;color:#111}
+      #reset-msg{margin-top:8px;font-size:12px;color:#0a7}
+    `;
+    document.head.appendChild(style);
+
+    const panel = document.createElement("div");
+    panel.id = "reset-panel";
+    panel.innerHTML = `
+      <div id="reset-card">
+        <h2>Reset your password</h2>
+        <label>Email</label>
+        <input id="rp-email" type="email" placeholder="you@example.com" />
+        <label>Code</label>
+        <input id="rp-code" placeholder="Enter code from email" />
+        <label>New password</label>
+        <input id="rp-newpass" type="password" placeholder="New password" />
+        <label>Confirm password</label>
+        <input id="rp-confirmpass" type="password" placeholder="Confirm password" />
+        <div id="reset-actions">
+          <button id="rp-verify">Verify</button>
+          <button id="rp-close" class="secondary">Close</button>
+        </div>
+        <div id="reset-msg"></div>
+      </div>`;
+    document.body.appendChild(panel);
+
+    document.getElementById("rp-close").onclick = () => panel.style.display = "none";
+    document.getElementById("rp-verify").onclick = verifyReset;
+  }
+
+  function showResetPanel(prefillEmail){
+    ensureResetPanel();
+    const p = document.getElementById("reset-panel");
+    if (prefillEmail) document.getElementById("rp-email").value = prefillEmail;
+    p.style.display = "flex";
+    document.getElementById("rp-code").focus();
+  }
+
+  function getVal(sel){
+    const el = document.querySelector(sel);
+    return (el && (el.value || el.textContent || "")).trim();
+  }
+
+  async function requestReset(){
+    const pageEmail = getVal('#email, input[type="email"], input[name="email"]');
+    const email = pageEmail || prompt("Enter your account email:");
+    if (!email) return;
+
+    // call backend (email must be query param)
+    const u = new URL(BASE_URL + "/api/auth/reset/request");
+    u.searchParams.set("email", email);
+    const r = await fetch(u.toString(), { method: "POST" });
+
+    if (r.ok) {
+      alert("Reset email sent. Check your inbox for the code.");
+      showResetPanel(email);
+    } else {
+      const t = await r.text();
+      alert("Reset failed: " + r.status + " " + t);
+      showResetPanel(email); // still show panel so user can retry
+    }
+  }
+
+  async function verifyReset(){
+    const email = getVal("#rp-email");
+    const code  = getVal("#rp-code");
+    const npw   = getVal("#rp-newpass");
+    const cnpw  = getVal("#rp-confirmpass") || npw;
+    const msgEl = document.getElementById("reset-msg");
+    if (!email || !code || !npw) { msgEl.style.color="#b00"; msgEl.textContent = "Email, code, and new password are required."; return; }
+
+    const body = JSON.stringify({ email, code, newPassword: npw, confirmPassword: cnpw });
+    const r = await fetch(BASE_URL + "/api/auth/reset/verify", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body
+    });
+    const text = await r.text();
+    if (r.ok) {
+      msgEl.style.color = "#0a7";
+      msgEl.textContent = "Password updated. Close this and log in.";
+    } else {
+      msgEl.style.color = "#b00";
+      msgEl.textContent = "Verify failed: " + r.status + " " + text;
+    }
+  }
+
+  // --- prevent form submit from wiping the panel ---
+  document.addEventListener("click", function(e){
+    const btn = e.target.closest("button,a,input[type='submit']");
+    if (!btn) return;
+    const label = (btn.innerText || btn.value || "").toLowerCase();
+    if (label.includes("forgot")) {
+      e.preventDefault(); e.stopPropagation();
+      requestReset();
+    }
+  }, true); // capture early
+
+  document.addEventListener("submit", function(e){
+    const sub = e.submitter;
+    const label = (sub && (sub.innerText || sub.value || "") || "").toLowerCase();
+    if (label.includes("forgot")) {
+      e.preventDefault(); e.stopPropagation();
+      requestReset();
+    }
+  }, true);
+
+  // also override common handlers if they exist
+  if (window.doForgot)      window.doForgot = requestReset;
+  if (window.doVerify)      window.doVerify = verifyReset;
+  if (window.doResetVerify) window.doResetVerify = verifyReset;
+
+  // ensure panel exists for immediate use
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", ensureResetPanel);
+  } else {
+    ensureResetPanel();
+  }
+})();
+</script>
+<!-- END: 7030 reset UI patch -->
 </body>
 </html>
 '@
+<script>
+(function(){
+  const API = "https://seven030app-backend.onrender.com";
+  const el = document.getElementById('serverStatus');
+  if (!el) return;
+  // Try /health, fall back to /
+  fetch(`${API}/health`, { mode: 'no-cors' })
+    .catch(() => fetch(`${API}/`, { mode: 'no-cors' }))
+    .finally(() => {
+      el.innerHTML = `<span class="ok">Server OK</span> � ${API}`;
+    });
+})();
+
+</script>
+
+
+
+
+
+
+
+
+
+
+
