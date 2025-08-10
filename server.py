@@ -1305,3 +1305,78 @@ try:
 except Exception as e:
     print("CPX_LINK_PUBLIC_ERROR:", e)
 # === end ===
+# === CPX webhook5 (env-aware: trusts net amounts when CPX_AMOUNTS_ARE_NET=1) ===
+try:
+    from fastapi import Request
+    import os
+    from sqlalchemy import create_engine, text
+    from datetime import datetime
+    from zlib import crc32
+
+    _DB = globals().get("DB", "db.sqlite")
+    _DATABASE_URL = os.getenv("DATABASE_URL") or (_DB if str(_DB).startswith("sqlite:///") else f"sqlite:///{_DB}")
+    _eng = create_engine(_DATABASE_URL, future=True)
+
+    def _uid(email: str) -> int:
+        return int(crc32(email.encode("utf-8")) & 0xffffffff)
+
+    async def cpx_webhook5(request: Request):
+        # Secret header check
+        required = os.getenv("CPX_SECURE_HASH", "")
+        header_secret = request.headers.get("X-CPX-Secret", "")
+        if required and header_secret != required:
+            return {"ok": False, "reason": "bad_secret"}
+
+        # Parse payload or query
+        try:
+            body = await request.json()
+        except Exception:
+            body = {}
+        q = dict(request.query_params)
+
+        email  = (body.get("ext_user_id") or q.get("ext_user_id") or "").strip()
+        txid   = (body.get("txid") or q.get("txid") or "").strip()
+        amount = (body.get("amount") or q.get("amount") or "0").strip()
+        status = (body.get("status") or q.get("status") or "").lower()
+
+        if not email or not txid:
+            return {"ok": False, "reason": "missing_fields"}
+
+        try:
+            gross_cents = int(round(float(amount) * 100))
+        except Exception:
+            gross_cents = 0
+
+        AMOUNTS_ARE_NET = os.getenv("CPX_AMOUNTS_ARE_NET", "0").lower() in ("1","true","yes")
+        TAKE_RATE = float(os.getenv("CPX_TAKE_RATE", "0.70"))
+
+        net_cents = gross_cents if AMOUNTS_ARE_NET else int(round(gross_cents * TAKE_RATE))
+
+        allowed = {"approved","confirmed","completed","paid","success"}
+        will_credit = (status in allowed) and net_cents > 0
+
+        uid = _uid(email)
+        ts = datetime.utcnow().isoformat()
+
+        with _eng.begin() as conn:
+            conn.execute(text("INSERT INTO wallet_balances (user_id, balance_cents) VALUES (:u, 0) ON CONFLICT(user_id) DO NOTHING"), {"u": uid})
+            try:
+                conn.execute(text("""
+                  INSERT INTO transactions (user_id, source, external_id, gross_cents, net_cents, status, meta, created_at)
+                  VALUES (:u, 'cpx', :tx, :g, :n, :st, NULL, :ts)
+                """), {"u": uid, "tx": txid, "g": gross_cents, "n": net_cents,
+                       "st": "credited" if will_credit else "ignored", "ts": ts})
+            except Exception:
+                return {"ok": True, "deduped": True}
+
+            if will_credit:
+                conn.execute(text("UPDATE wallet_balances SET balance_cents = balance_cents + :a WHERE user_id=:u"),
+                             {"a": net_cents, "u": uid})
+
+        return {"ok": True, "credited": will_credit, "email": email, "gross_cents": gross_cents, "net_cents": net_cents, "net_mode": AMOUNTS_ARE_NET}
+
+    app.add_api_route("/api/cpx/webhook5", cpx_webhook5, methods=["GET","POST"])
+    print("===CPX WEBHOOK5 READY===")
+except Exception as e:
+    print("===CPX WEBHOOK5 ERROR===", e)
+# === END CPX webhook5 ===
