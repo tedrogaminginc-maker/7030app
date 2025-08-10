@@ -1292,3 +1292,16 @@ async def cpx_webhook4(request: Request, x_cpx_secret: str | None = Header(None)
 app.add_api_route("/api/cpx/webhook4", cpx_webhook4, methods=["GET","POST"])
 print("===webhook4 mounted===")
 # === END: CPX webhook4 ===
+# === CPX link_public (no auth; uses email query) ===
+try:
+    from urllib.parse import quote
+    @app.get("/api/cpx/link_public")
+    def cpx_link_public(email: str):
+        import os
+        app_id = os.getenv("CPX_APP_ID", "28541")
+        secure = os.getenv("CPX_SECURE_HASH", "qTNDcrRbH2XGbK4oT1QvWODM21PiXGMf")
+        url = f"https://offers.cpx-research.com/index.php?app_id={app_id}&ext_user_id={quote(email)}&secure_hash={secure}"
+        return {"url": url}
+except Exception as e:
+    print("CPX_LINK_PUBLIC_ERROR:", e)
+# === end ===
