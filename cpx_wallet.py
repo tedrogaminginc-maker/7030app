@@ -305,3 +305,29 @@ def wallet_plain(email: str):
         return {"balance_cents": int(bal), "recent": recent}
     except Exception as e:
         return JSONResponse({"error": str(e)}, status_code=500)
+from fastapi.responses import JSONResponse
+
+@router.get("/wallet_plain2")
+def wallet_plain2(email: str):
+    try:
+        with engine.begin() as conn:
+            u = _get_user_by_email(conn, email)
+            if not u:
+                return JSONResponse({"error":"User not found","email":email}, status_code=404)
+            _ensure_wallet(conn, u.id)
+            bal = _get_balance(conn, u.id)
+            rows = conn.execute(text("""
+              SELECT id, source, external_id, gross_cents, net_cents, status, created_at
+              FROM transactions
+              WHERE user_id=:u
+              ORDER BY id DESC
+              LIMIT 50
+            """), {"u": u.id}).all()
+            recent = [{
+                "id": r.id, "source": r.source, "external_id": r.external_id,
+                "gross_cents": r.gross_cents, "net_cents": r.net_cents,
+                "status": r.status, "created_at": r.created_at
+            } for r in rows]
+        return {"balance_cents": int(bal), "recent": recent}
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
