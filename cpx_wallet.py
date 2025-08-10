@@ -1,4 +1,5 @@
-﻿from datetime import datetime
+﻿
+from datetime import datetime
 import os, json
 from typing import List
 
@@ -7,14 +8,15 @@ from pydantic import BaseModel
 from sqlalchemy import create_engine, text
 from sqlalchemy.exc import IntegrityError
 
-CPX_SECURE_HASH = os.getenv("CPX_SECURE_HASH", "")  # optional check
+CPX_SECURE_HASH = os.getenv("CPX_SECURE_HASH", "")  # optional
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./app.db")
 
 engine = create_engine(DATABASE_URL, future=True)
 router = APIRouter(prefix="/api", tags=["wallet"])
 
-# ---- schema ----
-DDL = """
+# ---- schema: create tables explicitly ----
+with engine.begin() as conn:
+    conn.execute(text("""
 CREATE TABLE IF NOT EXISTS transactions (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   user_id INTEGER NOT NULL,
@@ -26,19 +28,16 @@ CREATE TABLE IF NOT EXISTS transactions (
   meta TEXT,
   created_at TEXT NOT NULL,
   UNIQUE(source, external_id)
-);
+)
+"""))
+    conn.execute(text("""
 CREATE TABLE IF NOT EXISTS wallet_balances (
   user_id INTEGER PRIMARY KEY,
   balance_cents INTEGER NOT NULL DEFAULT 0
-);
-"""
-with engine.begin() as conn:
-    for stmt in DDL.strip().split(";\n"):
-        if stmt.strip():
-            conn.execute(text(stmt))
-
-def _ensure_wallet(conn, user_id:int):
-    # create table if it somehow doesn't exist
+)
+"""))
+# ---- helpers ----
+def _ensure_wallet(conn, user_id:int) -> None:
     conn.execute(text("""
 CREATE TABLE IF NOT EXISTS wallet_balances (
   user_id INTEGER PRIMARY KEY,
@@ -47,18 +46,28 @@ CREATE TABLE IF NOT EXISTS wallet_balances (
 """))
     conn.execute(text("""
       INSERT INTO wallet_balances (user_id, balance_cents)
-      VALUES (:u, 0) ON CONFLICT(user_id) DO NOTHING
-    """), {"u": user_id}) conn.execute(text("SELECT id, email FROM users WHERE email=:e"), {"e": email}).first()
+      VALUES (:u, 0)
+      ON CONFLICT(user_id) DO NOTHING
+    """), {"u": user_id})
 
-def _get_balance(conn, user_id:int)->int:
-    row = conn.execute(text("SELECT balance_cents FROM wallet_balances WHERE user_id=:u"), {"u": user_id}).first()
+def _get_user_by_email(conn, email:str):
+    return conn.execute(
+        text("SELECT id, email FROM users WHERE email=:e"),
+        {"e": email}
+    ).first()
+
+def _get_balance(conn, user_id:int) -> int:
+    row = conn.execute(
+        text("SELECT balance_cents FROM wallet_balances WHERE user_id=:u"),
+        {"u": user_id}
+    ).first()
     return int(row[0]) if row else 0
 
-def _add_balance(conn, user_id:int, add_cents:int):
-    conn.execute(text("""
-      UPDATE wallet_balances SET balance_cents = balance_cents + :a WHERE user_id=:u
-    """), {"a": add_cents, "u": user_id})
-
+def _add_balance(conn, user_id:int, add_cents:int) -> None:
+    conn.execute(
+        text("UPDATE wallet_balances SET balance_cents = balance_cents + :a WHERE user_id=:u"),
+        {"a": add_cents, "u": user_id}
+    )
 class TxOut(BaseModel):
     id:int
     source:str
@@ -82,13 +91,17 @@ def wallet(email: str = Query(..., description="User email for lookup")):
         bal = _get_balance(conn, u.id)
         rows = conn.execute(text("""
           SELECT id, source, external_id, gross_cents, net_cents, status, created_at
-          FROM transactions WHERE user_id=:u ORDER BY id DESC LIMIT 50
+          FROM transactions
+          WHERE user_id=:u
+          ORDER BY id DESC
+          LIMIT 50
         """), {"u": u.id}).all()
-    recent = [TxOut(id=r.id, source=r.source, external_id=r.external_id,
-                    gross_cents=r.gross_cents, net_cents=r.net_cents,
-                    status=r.status, created_at=r.created_at) for r in rows]
+    recent = [TxOut(
+        id=r.id, source=r.source, external_id=r.external_id,
+        gross_cents=r.gross_cents, net_cents=r.net_cents,
+        status=r.status, created_at=r.created_at
+    ) for r in rows]
     return WalletOut(balance_cents=bal, recent=recent)
-
 @router.api_route("/cpx/webhook", methods=["GET","POST"])
 async def cpx_webhook(request: Request):
     # Parse input
@@ -101,7 +114,7 @@ async def cpx_webhook(request: Request):
             form = await request.form()
             data = dict(form)
 
-    # optional signature
+    # optional signature (defense-in-depth)
     incoming_hash = (data.get("secure_hash") or data.get("hash") or "").strip()
     if CPX_SECURE_HASH and incoming_hash and incoming_hash != CPX_SECURE_HASH:
         raise HTTPException(status_code=401, detail="Bad signature")
@@ -115,6 +128,7 @@ async def cpx_webhook(request: Request):
     if not ext_user_id or not txid:
         raise HTTPException(status_code=400, detail="Missing ext_user_id or txid")
 
+    # dollars->cents or fallback
     gross_cents = 0
     try:
         if amount_raw:
@@ -123,8 +137,8 @@ async def cpx_webhook(request: Request):
             gross_cents = int(float(reward_raw))
     except Exception:
         gross_cents = 0
-    net_cents = int(gross_cents * 0.70) if gross_cents > 0 else 0
 
+    net_cents = int(gross_cents * 0.70) if gross_cents > 0 else 0
     allowed = {"approved","confirmed","completed","paid","success"}
     will_credit = (status in allowed) and (net_cents > 0)
 
@@ -134,7 +148,7 @@ async def cpx_webhook(request: Request):
     with engine.begin() as conn:
         u = _get_user_by_email(conn, ext_user_id)
         if not u:
-            # store ignored row for traceability
+            # record ignored row for traceability
             try:
                 conn.execute(text("""
                   INSERT INTO transactions (user_id, source, external_id, gross_cents, net_cents, status, meta, created_at)
@@ -161,4 +175,3 @@ async def cpx_webhook(request: Request):
             _add_balance(conn, u.id, net_cents)
 
     return {"ok": True, "credited": will_credit, "gross_cents": gross_cents, "net_cents": net_cents}
-
