@@ -1490,3 +1490,88 @@ try:
 except Exception as e:
     print("===CPX WEBHOOK6 ERROR===", e)
 # === END CPX webhook6 ===
+# === BEGIN ADS WATCH ACCRUAL ===
+try:
+    from fastapi import Depends, Header
+    from sqlalchemy import create_engine, text
+    from datetime import datetime
+    from zlib import crc32
+    import os
+
+    # Reuse app DB
+    _DB = globals().get("DB", "db.sqlite")
+    _DATABASE_URL = os.getenv("DATABASE_URL") or (_DB if str(_DB).startswith("sqlite:///") else f"sqlite:///{_DB}")
+    _engine_ads = create_engine(_DATABASE_URL, future=True)
+
+    # Config: 1.5¢ gross/view (default), 70% to user
+    _ADS_GROSS_USD = float(os.getenv("ADS_GROSS_USD_PER_VIEW", "0.015"))
+    _TAKE_RATE     = float(os.getenv("ADS_TAKE_RATE", os.getenv("CPX_TAKE_RATE", "0.70")))
+
+    # Tables we need
+    with _engine_ads.begin() as c:
+        c.execute(text("CREATE TABLE IF NOT EXISTS wallet_balances (user_id INTEGER PRIMARY KEY, balance_cents INTEGER NOT NULL DEFAULT 0)"))
+        c.execute(text("CREATE TABLE IF NOT EXISTS adviews (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL, created_at TEXT NOT NULL)"))
+        c.execute(text("CREATE TABLE IF NOT EXISTS ad_accruals (user_id INTEGER PRIMARY KEY, pending_millicents INTEGER NOT NULL DEFAULT 0)"))
+
+    def _uid(email: str) -> int:
+        return int(crc32(email.encode("utf-8")) & 0xffffffff)
+
+    # Depend on your existing JWT auth
+    def _get_uid_from_user(user):
+        # Use CRC32(email) to stay consistent with wallet2
+        email = None
+        try:
+            if isinstance(user, dict):
+                email = user.get("email")
+            else:
+                email = getattr(user, "email", None)
+        except Exception:
+            pass
+        return _uid(email) if email else 0, email
+
+    @app.post("/api/ads/watch2")
+    def ads_watch2(user = Depends(get_current_user)):
+        uid, email = _get_uid_from_user(user)
+        if not uid:
+            return {"ok": False, "error": "unauthorized"}
+
+        gross_usd = _ADS_GROSS_USD
+        # Convert to millicents and apply 70% (round so two 0.7¢ views -> 1¢ total)
+        net_millicents = int(round(gross_usd * 1000 * _TAKE_RATE))
+        ts = datetime.utcnow().isoformat()
+
+        with _engine_ads.begin() as conn:
+            # log view
+            conn.execute(text("INSERT INTO adviews (user_id, created_at) VALUES (:u, :ts)"), {"u": uid, "ts": ts})
+
+            # ensure accrual row
+            conn.execute(text("INSERT INTO ad_accruals (user_id, pending_millicents) VALUES (:u, 0) ON CONFLICT(user_id) DO NOTHING"), {"u": uid})
+
+            # add pending
+            conn.execute(text("UPDATE ad_accruals SET pending_millicents = pending_millicents + :add WHERE user_id=:u"),
+                         {"add": net_millicents, "u": uid})
+
+            # read pending and convert 10 millicents => 1 cent
+            pending = conn.execute(text("SELECT pending_millicents FROM ad_accruals WHERE user_id=:u"), {"u": uid}).scalar() or 0
+            cents_to_credit = pending // 10
+            if cents_to_credit > 0:
+                conn.execute(text("UPDATE ad_accruals SET pending_millicents = pending_millicents - :used WHERE user_id=:u"),
+                             {"used": cents_to_credit * 10, "u": uid})
+                conn.execute(text("INSERT INTO wallet_balances (user_id, balance_cents) VALUES (:u, 0) ON CONFLICT(user_id) DO NOTHING"), {"u": uid})
+                conn.execute(text("UPDATE wallet_balances SET balance_cents = balance_cents + :c WHERE user_id=:u"),
+                             {"c": cents_to_credit, "u": uid})
+
+        new_pending = (pending + net_millicents) - cents_to_credit * 10
+        return {
+            "ok": True,
+            "gross_usd": gross_usd,
+            "take_rate": _TAKE_RATE,
+            "net_millicents_added": net_millicents,
+            "cents_credited_now": int(cents_to_credit),
+            "pending_millicents": int(new_pending)
+        }
+
+    print("===ADS_WATCH2_READY===")
+except Exception as _e:
+    print("===ADS_WATCH2_ERROR===", _e)
+# === END ADS WATCH ACCRUAL ===
